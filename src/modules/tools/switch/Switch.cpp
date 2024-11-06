@@ -383,12 +383,12 @@ void Switch::dragpin_try_release( void *argument )
     rt--;
     if (!timeout) {
         char buf[40];
-        int n = snprintf(buf, sizeof(buf), " ; ASW: l%d,t%d (%s)", loops, rt, release_try[rt]);
+        int n = snprintf(buf, sizeof(buf), "; ASW: l%d,t%d (%s)", loops, rt, release_try[rt]);
         gcode->txt_after_ok.append(buf, n);
 
     } else {
         char buf[24];
-        int n = snprintf(buf, sizeof(buf), " ; ASW: Fail l%d,t%d", loops, rt);
+        int n = snprintf(buf, sizeof(buf), "; ASW: Fail l%d,t%d", loops, rt);
         gcode->txt_after_ok.append(buf, n);
     }
     
