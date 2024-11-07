@@ -265,7 +265,6 @@ const PinMap PinMap_UART_CTS[] = {
     {NC,    NC,     0}
 };
 
-
 //*** SPI ***
 
 const PinMap PinMap_SPI_MOSI[] = {

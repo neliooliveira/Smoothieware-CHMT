@@ -1,24 +1,23 @@
+# SMOOTHIEWARE-CHMT
+This is a special Smoothieware firmware for the control board of the Charmhigh CHM-T36VA, CHM-T48VB and equivalent.
+It is based on an old STM32 port of Smmothieware and specially tailored for the Charmhigh mainboard.
 
+Precompiled firmware is available in the STM32F407xG folder. To flash the mainboard, a full chip erase is required. While flashing, the vacuum pump and the blower will run at 100% making some noise. This does not harm for the time the flashing takes. This firmware supports M115, which is used by OpenPnP for detection. Based this this, Issues & Solutions supports mostly automatic configuration. A sample machine.xml is available in this repository. It may serve as a quick start, however using Issues & Solutions on a fresh installation (no machine.xml in ~/.openpnp2) is recommended.
 
-### This fork started as DMA on the serial/RS232 hardware with (or without) handshaking and increased + more reliable throughput, but has evolved further from that. Current changes includes:
-* Serial bitrate up to 4Mbit with or without RTS/CTS
+## New features:
+* Serial bitrate up to 4Mbit with or without RTS/CTS (with DMA)
 * Removed machine coordination of actuators in FW, letting OpenPnP deal with them as it should be. Original code always waited for machine to be still before enabling e.g. down led.
-* Drag pin inactivation are now handled smartly, by actually sensing if pin is up before sending acknowledge; this means that static delays are no longer needed in OpenPnP setup, and a  much more robust drag pin operation.
-* Anti Stiction Wiggle (ASW). If drag pin gets stuck, FW automatically tries to free it by quickly moving drag pin in a X/Y back/forth/left/righ pattern until it is free (or give up if it is not freed). At any time ASW has been engaged, the 'ok' back to OpenPnP has a comment attached to it, detailing what the ASW result was - e.g. "2023-12-13 11:22:54.328 GcodeDriver$ReaderThread TRACE: [GcodeDriver:ttyUSB0] << ok  ; ASW: l1,t4 (G1 X-0.1 Y-0.05)".
 * Improved vacuum sensing. With all the speed-up, the vacuum sensing gave away that it dit not actually update the value very often (only every 50ms), rendering it useless. Now it is updated every millisecond.
-* Firmware management of drag pin PWM. The drag pin needs management of the power supplied to the solenoid. This fork lets the firwmware deal with it by itself, instead of having OpenPnP sending the different levels. In order to have the firmware dealing with it, just send a M816 without any argument. If an 'S' argument is supplied, this will set aside/override the firmware management. So be careful - if 'S' argument (e.g. 'S 100') is sent, the firmware will not manage the current, and OpenPNP _needs_ to send e.g. 'S 10' in order to not burn the coil.
+* Selective (configurable) machine coordination for switches (currently enabled for vacuum valves and drag pin) added
+* Drag pin inactivation are now handled smartly by actually sensing if the pin is up before sending acknowledge; this means that static delays are no longer needed in OpenPnP setup, and a much more robust drag pin operation.
+* Anti Stiction Wiggle (ASW). If drag pin gets stuck, FW automatically tries to free it by quickly moving the drag pin in a X/Y back/forth/left/righ pattern until it is free (or give up if it is not freed). At any time ASW has been engaged, the 'ok' back to OpenPnP has a comment attached to it, detailing what the ASW result was - e.g. "2023-12-13 11:22:54.328 GcodeDriver$ReaderThread TRACE: [GcodeDriver:ttyUSB0] << ok ; ASW: l1,t4 (G1 X-0.1 Y-0.05)".
+* Firmware management of drag pin PWM. The drag pin needs management of the power supplied to the solenoid to prevent it from burning. The FW deal with it by itself, instead of having OpenPnP sending the different levels. In order to have the firmware dealing with it, just send a M816 without any argument. If an 'S' argument is supplied, this will set aside/override the firmware management. So be careful - if 'S' argument (e.g. 'S 100') is sent, the firmware will not manage the current, and OpenPnP _needs_ to send e.g. 'S 10' in order to not burn the coil. Please note that a small delay (~10ms) is still required for the pin to go down.
 
-ASW is dependant on the smart drag pin activation code. Both can be enabled by adding a new property "switch.dragpin.dragpin true" to the group of switch.dragpin in the config.default. This property tells the generic code, that this pin is connected to a dragpin, and to activate the advanced mechanisms. Setting its value to false disables andy advanced logic.
+ASW is dependant on the smart drag pin activation code. Both can be enabled by adding a new property "switch.dragpin.dragpin true" to the group of switch.dragpin in the config.default. This property tells the generic code, that this pin is connected to a drag pin, and to activate the advanced mechanisms. Setting its value to false disables any advanced logic.
 
-#### Serial hardware modifications 
-With this branch, DMA is implemented on rx as well as tx with hardware flow control.
 Hardware flow control can be disabled by setting rts_cts_handshake to false in config.defaults. So in theory, this branch should work with stock machine, up to 115200 Baud (CHM-T36), as long as confirmation flow control is still enabled in OpenPnP. (115200 comes from the limitation of the rs232 level shifter, U32, populated on the controller board). A CHM-T48 should be able to achieve 480kBaud, limited by the rs422 interface driver.
 
-Note; the author has long since updated his machine to RTS/CTS and non-RS232/422 levels, bitrate of 4mbit, so using a stock machine is currently untested. 
-
-There are still benefits to use this serial code on a stock machine, just not very noticeable. 
 In theory, a CHMT36 should be able to be set-up to use RTS control without doing any board changes, by specifying the UART2 tx pin in Kernel.cpp as rts pin (set cts to NC). This has not yet been tested. Then you would at least no longer need "Confirmation Flow Control".
-
 
 In order to benefit from higher throughput and hardware flow control, you will need to modify your control board.
 The changes needed, can be defined in two groups; one for the actual hardware flow control, and one for increased bitrate.
@@ -55,24 +54,24 @@ In OpenPnP you will need to select RTS/CTS flow control, and uncheck the "Confir
 
 If you have a standard board, you need to set the baud rate to 115200/460k and set flow control to false in the config.defaults.
 
-
-
 A picture of the patch prior removing the rs232 (U32) chip;
 ![rts_cts_patch](https://user-images.githubusercontent.com/18227864/158996475-5d222994-015a-4fb8-b81a-a45bb956cf9d.jpg)
 
+## Notes
+This version contains a few modifications with respect to the original code by Matt
+* c-riegel's mods to support advanced motion in OpenPnp
+* c-riegel's tweaked feed rate and acceleration limits
+* increased z limits to allow the z axis to move to its physical limits
+* vacuum and blower configuration changed to 16kHz pwm (M808/M810 S<percent>)
+* drap bin configuration changed to 16kHz pwm (M816 S<percent>)
+* buzzer configured (on: M820, off: M821)
+* default build changed to PAXIS=7
+* planner queue increased to 128
+* lighting for down-looking camera added (via OT2, 16kHz pwm, M822 S<percent>)
 
+Current build status: {{https://travis-ci.org/Smoothieware/Smoothieware.svg?branch=edge}}
 
-#### Also included in this branch is;
-* Jan's (janm012012) additions for ligthing for down camera, and increased z-limits etc.
-* A reboot check in gcode dispatch, that will halt the machine if a software/watchdog etc reset has occurred. (non-power on start) and send a message why onto OpenPnP. (Clear HALT with M999).
-* A minor memory leak fix from smoothieware upstream (M115)
-  
-***  
-***   
-****
- 
 ## Old STM32/CHMT Notes from upstream
-***
 To build, follow normal smoothie build process to get setup.  Then checkout chmt branch and rebuild.
 
 ### Port Status:

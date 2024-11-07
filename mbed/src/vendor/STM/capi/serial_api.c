@@ -40,11 +40,9 @@
 
 #define UART_NUM (8)
 
-
 static uint32_t serial_irq_ids[UART_NUM] = {0, 0, 0, 0, 0, 0, 0, 0};
 
 static uart_irq_handler irq_handler;
-
 
 UART_HandleTypeDef UartHandle;
 
@@ -60,7 +58,6 @@ static void init_uart(serial_t *obj)
     UartHandle.Init.StopBits   = obj->stopbits;
     UartHandle.Init.Parity     = obj->parity;
     UartHandle.Init.HwFlowCtl  = obj->hw_flowcontrol;
-  
 
     if (obj->pin_rx == NC) {
         UartHandle.Init.Mode = UART_MODE_TX;
@@ -75,7 +72,6 @@ static void init_uart(serial_t *obj)
     }
 }
 
-
 void serial_init(serial_t *obj, PinName tx, PinName rx, PinName rts, PinName cts)
 {
     // Determine the UART to use (UART_1, UART_2, ...)
@@ -85,7 +81,6 @@ void serial_init(serial_t *obj, PinName tx, PinName rx, PinName rts, PinName cts
     // Get the peripheral name (UART_1, UART_2, ...) from the pin and assign it to the object
     obj->uart = (UARTName)pinmap_merge(uart_tx, uart_rx);
     MBED_ASSERT(obj->uart != (UARTName)NC);
-
 
     // Enable USART clock
     switch (obj->uart) {
@@ -136,13 +131,9 @@ void serial_init(serial_t *obj, PinName tx, PinName rx, PinName rts, PinName cts
 #endif
     }
 
-
-
     // Configure the UART pins
     pinmap_pinout(tx, PinMap_UART_TX);
     pinmap_pinout(rx, PinMap_UART_RX);
-    
-    
     if (tx != NC) {
         pin_mode(tx, PullUp);
     }
@@ -150,18 +141,14 @@ void serial_init(serial_t *obj, PinName tx, PinName rx, PinName rts, PinName cts
         pin_mode(rx, PullUp);
     }
 
-    if ( rts != NC )
-    {
+    if (rts != NC) {
         pin_function( rts, STM_PIN_DATA(STM_MODE_OUTPUT_PP, GPIO_NOPULL, 0));   // In DMA mode, we set RTS output as discrete GPIO, and handle by software to deal with crappy usb-serial devices inability to do correct (prompt) rts hs.
     }
-    if ( cts != NC )
-	{
+    if (cts != NC) {
         pinmap_pinout(cts, PinMap_UART_CTS);
 		pin_mode(cts, PullUp );
 		obj->hw_flowcontrol = UART_HWCONTROL_CTS;
-	}
-	else
-	{
+	} else {
 		obj->hw_flowcontrol = UART_HWCONTROL_NONE;
 	}
 		
@@ -301,7 +288,6 @@ static void dma2_irq( void )
     DMA2->LIFCR |= DMA_LISR_TCIF2 | DMA_LISR_HTIF2 | DMA_LISR_TEIF2 | DMA_LISR_DMEIF2 | DMA_LISR_FEIF2;    
 }
 
-
 static void uart_irq(UARTName name, int id)
 {
     UartHandle.Instance = (USART_TypeDef *)name;
@@ -314,12 +300,10 @@ static void uart_irq(UARTName name, int id)
             irq_handler(serial_irq_ids[id], RxIrq);
             __HAL_UART_CLEAR_FLAG(&UartHandle, UART_FLAG_RXNE);
         }
-
         if (__HAL_UART_GET_FLAG(&UartHandle, UART_FLAG_IDLE) != RESET) {
             __HAL_UART_CLEAR_IDLEFLAG(&UartHandle);
             irq_handler(serial_irq_ids[id], RxIdleIrq);
         }
-        
     }
 }
 
@@ -457,8 +441,7 @@ void serial_irq_set(serial_t *obj, SerialIrq irq, uint32_t enable)
 
     if (enable) {
 
-        switch (irq)
-        {
+        switch (irq) {
             case RxIrq:
                 __HAL_UART_ENABLE_IT(&UartHandle, UART_IT_RXNE);
                 break;
@@ -470,12 +453,12 @@ void serial_irq_set(serial_t *obj, SerialIrq irq, uint32_t enable)
             case RxIdleIrq:
                 __HAL_UART_ENABLE_IT(&UartHandle, UART_IT_IDLE);
                 break;
+
             case DmaTCIrq:
             case DmaHFIrq:
                 break;
         }
-        if ( dma_vector )
-        {
+        if  dma_vector) {
             NVIC_SetVector(dma_irq_n, dma_vector);
             NVIC_EnableIRQ(dma_irq_n);
         }
@@ -504,8 +487,7 @@ void serial_irq_set(serial_t *obj, SerialIrq irq, uint32_t enable)
         }
 
         
-        if ( !(UartHandle.Instance->CR1 & (USART_CR1_RXNEIE | USART_CR1_TXEIE | USART_CR1_IDLEIE)) ) // All disabled?
-        {
+        if ( !(UartHandle.Instance->CR1 & (USART_CR1_RXNEIE | USART_CR1_TXEIE | USART_CR1_IDLEIE)) )  { // All disabled?
             NVIC_DisableIRQ(irq_n);
         }
 

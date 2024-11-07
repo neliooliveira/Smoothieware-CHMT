@@ -60,6 +60,7 @@ void Serial::attach(void (*fptr)(void), IrqType type) {
 void Serial::dma_init( unsigned char* rx_buffer, int len ) {
     serial_activate_rxdma( rx_buffer, len );
 }
+
 void Serial::_irq_handler(uint32_t id, SerialIrq irq_type) {
     Serial *handler = (Serial*)id;
     handler->_irq[irq_type].call();

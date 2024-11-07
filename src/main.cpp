@@ -257,7 +257,6 @@ void init() {
     THEKERNEL->conveyor->start(THEROBOT->get_number_registered_motors());
     THEKERNEL->step_ticker->start();
     THEKERNEL->slow_ticker->start();
-
 }
 
 int main()

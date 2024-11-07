@@ -11,8 +11,8 @@
 #include "Pin.h"
 #include "Pwm.h"
 #include <math.h>
-#include <string>
 
+#include <string>
 
 class Gcode;
 class StreamOutput;
@@ -44,6 +44,7 @@ class Switch : public Module {
         bool match_input_off_gcode(const Gcode* gcode) const;
         void pwm_write(float v);
         void dragpin_try_release(void *argument);
+
         Pin       input_pin;
         float     switch_value;
         OUTPUT_TYPE output_type;
@@ -64,7 +65,6 @@ class Switch : public Module {
         uint32_t  activation_start_time;
         uint8_t   reduced_pwm_value;
         uint8_t   max_pwm_ms;
-
         struct {
             uint8_t   subcode:4;
             bool      switch_changed:1;
@@ -74,6 +74,7 @@ class Switch : public Module {
             uint8_t   failsafe:1;
             bool      inverting:1;
             bool      is_a_dragpin:1;
+            bool      coordinate:1;      // coordinate operation with motion, simulate a M400 before execution
         };
 };
 

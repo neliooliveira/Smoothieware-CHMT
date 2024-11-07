@@ -30,14 +30,6 @@
 #define panel_display_message_checksum CHECKSUM("display_message")
 #define panel_checksum             CHECKSUM("panel")
 
-// remove when tested!
-//~ #include "gpio.h"
-//~ GPIO general_debug_pin( PG_10 );
-//~ #define SET_GENERAL_DEBUG_PIN(n) {if(n) general_debug_pin.set(); else general_debug_pin.clear(); }
-
-
-
-
 // goes in Flash, list of Mxxx codes that are allowed when in Halted state
 static const int allowed_mcodes[]= {2,5,9,30,105,114,115,119,80,81,911,503,106,107}; // get temp, get pos, get endstops etc
 static bool is_allowed_mcode(int m) {
@@ -58,11 +50,6 @@ GcodeDispatch::GcodeDispatch()
 void GcodeDispatch::on_module_loaded()
 {
     this->register_for_event(ON_CONSOLE_LINE_RECEIVED);
-#ifdef SET_GENERAL_DEBUG_PIN
-    general_debug_pin.output();
-    general_debug_pin= 0;
-#endif
-    
 }
 
 // When a command is received, if it is a Gcode, dispatch it as an object via an event
@@ -125,23 +112,23 @@ try_again:
             //Strip checksum value from possible_command
             size_t chkpos = possible_command.find_first_of("*");
 
-            //Calculate checksum
+			//Calculate checksum
             if ( chkpos != string::npos ) {
-                possible_command = possible_command.substr(0, chkpos);
+				possible_command = possible_command.substr(0, chkpos);
                 for (auto c = possible_command.cbegin(); *c != '*' && c != possible_command.cend(); c++)
                     cs = cs ^ *c;
                 cs &= 0xff;  // Defensive programming...
                 cs -= chksum;
-            }
+			}
 
             //Strip line number value from possible_command
-            size_t lnsize = possible_command.find_first_not_of("N0123456789.,- ");
-            if(lnsize != string::npos) {
-                possible_command = possible_command.substr(lnsize);
-            }else{
-                // it is a blank line
-                possible_command.clear();
-            }
+			size_t lnsize = possible_command.find_first_not_of("N0123456789.,- ");
+			if(lnsize != string::npos) {
+				possible_command = possible_command.substr(lnsize);
+			}else{
+				// it is a blank line
+				possible_command.clear();
+			}
 
         } else {
             //Assume checks succeeded
@@ -185,9 +172,9 @@ try_again:
                         if(gcode->has_m && gcode->m == 999) {
                             if(THEKERNEL->is_halted()) {
                                 THEKERNEL->call_event(ON_HALT, (void *)1); // clears on_halt
-                                new_message.stream->printf("WARNING: After HALT you should HOME as position is currently unknown\r\n");
+                                new_message.stream->printf("WARNING: After HALT you should HOME as position is currently unknown\n");
                             }
-                            new_message.stream->printf("ok\r\n");
+                            new_message.stream->printf("ok\n");
                             delete gcode;
                             return;
 
@@ -292,23 +279,11 @@ try_again:
                                 return;
 
                             case 115: { // M115 Get firmware version and capabilities
-                                delete gcode;
                                 Version vers;
-                                new_message.stream->printf("FIRMWARE_NAME:Smoothieware, FIRMWARE_URL:http://smoothieware.org, X-SOURCE_CODE_URL:https://github.com/vespaman/Smoothieware-CHMT, X-HARDWARE:CHMT, FIRMWARE_VERSION:%s, X-FIRMWARE_BUILD_DATE:%s, X-SYSTEM_CLOCK:%ldMHz, X-AXES:%d, X-PAXES:%d, X-GRBL_MODE:%d, X-SERIAL_FLOW:%s", vers.get_build(), vers.get_build_date(), SystemCoreClock / 1000000, MAX_ROBOT_ACTUATORS, N_PRIMARY_AXIS, THEKERNEL->is_grbl_mode(), THEKERNEL->has_serial_rts_cts_handshake()?"RTS/CTS":"NONE");
 
-                                #ifdef CNC
-                                new_message.stream->printf(", X-CNC:1");
-                                #else
-                                new_message.stream->printf(", X-CNC:0");
-                                #endif
+                                new_message.stream->printf("FIRMWARE_NAME:Smoothieware, FIRMWARE_URL:http%%3A//smoothieware.org, X-SOURCE_CODE_URL:https%%3A//github.com/janm012012/Smoothieware-CHMT, FIRMWARE_VERSION:%s, X-FIRMWARE_BUILD_DATE:%s, X-SYSTEM_CLOCK:%ldMHz, X-AXES:%d, X-PAXES:%d, X-GRBL_MODE:%d, X-SERIAL_FLOW:%s, X-ASW:1, X-COORDINATE:1", vers.get_build(), vers.get_build_date(), SystemCoreClock / 1000000, MAX_ROBOT_ACTUATORS, N_PRIMARY_AXIS, THEKERNEL->is_grbl_mode(), THEKERNEL->has_serial_rts_cts_handshake()?"RTS/CTS":"NONE");
 
-                                #ifdef DISABLEMSD
-                                new_message.stream->printf(", X-MSD:0");
-                                #else
-                                new_message.stream->printf(", X-MSD:1");
-                                #endif
-
-                                new_message.stream->printf("\r\nok\r\n");
+                                new_message.stream->printf("\nok\n");
                                 return;
                             }
 
@@ -395,6 +370,7 @@ try_again:
                                 gcode->add_nl= true;
                                 break; // fall through to process by modules
                             }
+
                         }
                     }
 
@@ -497,10 +473,8 @@ try_again:
 
 
     } else {
-        //SET_GENERAL_DEBUG_PIN(1);
         // an uppercase non command word on its own (except XYZF) just returns ok, we could add an error but no hosts expect that.
-        new_message.stream->printf("ok - ignored %c %x\n", first_char, first_char);
-        //SET_GENERAL_DEBUG_PIN(0);
+        new_message.stream->printf("ok - ignored\n");
     }
 }
 

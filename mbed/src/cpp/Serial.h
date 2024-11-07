@@ -74,7 +74,7 @@ public:
     enum IrqType {
         RxIrq = 0,
         TxIrq,
-		RxIdleIrq,
+        RxIdleIrq,
         DmaHFIrq,
         DmaTCIrq
     };
@@ -96,6 +96,7 @@ public:
     int readable();
     int get_dma_buffer_index();
 	int getrx();
+
     /** Determine if there is space available to write a character
      *
      *  @returns
@@ -113,6 +114,7 @@ public:
      *  @param type Which serial interrupt to attach the member function to (Seriall::RxIrq for receive, TxIrq for transmit buffer empty)
      */
     void attach(void (*fptr)(void), IrqType type=RxIrq);
+
     /** Attach a member function to call whenever a serial interrupt is generated
      *
      *  @param tptr pointer to the object to call the member function on

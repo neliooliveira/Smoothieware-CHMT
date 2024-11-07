@@ -55,6 +55,7 @@
 #define grbl_mode_checksum                          CHECKSUM("grbl_mode")
 #define feed_hold_enable_checksum                   CHECKSUM("enable_feed_hold")
 #define ok_per_line_checksum                        CHECKSUM("ok_per_line")
+
 Kernel* Kernel::instance;
 
 // The kernel is the central point in Smoothie : it stores modules, and handles event calls
@@ -66,32 +67,25 @@ Kernel::Kernel()
     normal_power_on_reset = true;
     unsigned int rcc_csr = RCC->CSR;
 
-    if (rcc_csr & RCC_CSR_BORRSTF)
-    {
+    if (rcc_csr & RCC_CSR_BORRSTF) {
         reset_info += "BROWN-OUT ";
     }
-    if (rcc_csr & RCC_CSR_PINRSTF)
-    {
+    if (rcc_csr & RCC_CSR_PINRSTF) {
         reset_info += "PIN ";
     }
-    if (rcc_csr & RCC_CSR_PORRSTF)
-    {
+    if (rcc_csr & RCC_CSR_PORRSTF) {
         reset_info += "POWER-ON ";
     }
-    if (rcc_csr & RCC_CSR_SFTRSTF)
-    {
+    if (rcc_csr & RCC_CSR_SFTRSTF) {
         reset_info += "SOFTWARE-RESET ";
     }
-    if (rcc_csr & RCC_CSR_IWDGRSTF)
-    {
+    if (rcc_csr & RCC_CSR_IWDGRSTF) {
         reset_info += "INDEPENDANT-WATCHDOG ";
     }
-    if (rcc_csr & RCC_CSR_WWDGRSTF)
-    {
+    if (rcc_csr & RCC_CSR_WWDGRSTF) {
         reset_info += "WINDOW-WATCHDOG ";
     }
-    if (rcc_csr & RCC_CSR_LPWRRSTF)
-    {
+    if (rcc_csr & RCC_CSR_LPWRRSTF) {
         reset_info += "LOW-POWER ";
     }
 
@@ -414,3 +408,4 @@ void Kernel::unregister_for_event(_EVENT_ENUM id_event, Module *mod)
         }
     }
 }
+

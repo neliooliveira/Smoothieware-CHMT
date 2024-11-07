@@ -93,7 +93,6 @@ class Kernel {
             bool normal_power_on_reset:1;
         };
 
-
 };
 
 #endif
