@@ -270,19 +270,7 @@ try_again:
                             case 115: { // M115 Get firmware version and capabilities
                                 Version vers;
 
-                                new_message.stream->printf("FIRMWARE_NAME:Smoothieware, FIRMWARE_URL:http%%3A//smoothieware.org, X-SOURCE_CODE_URL:https%%3A//github.com/janm012012/Smoothieware-CHMT, FIRMWARE_VERSION:%s, X-FIRMWARE_BUILD_DATE:%s, X-SYSTEM_CLOCK:%ldMHz, X-AXES:%d, X-PAXES:%d, X-GRBL_MODE:%d, X-SERIAL_FLOW:NONE", vers.get_build(), vers.get_build_date(), SystemCoreClock / 1000000, MAX_ROBOT_ACTUATORS, N_PRIMARY_AXIS, THEKERNEL->is_grbl_mode());
-
-                                #ifdef CNC
-                                new_message.stream->printf(", X-CNC:1");
-                                #else
-                                new_message.stream->printf(", X-CNC:0");
-                                #endif
-
-                                #ifdef DISABLEMSD
-                                new_message.stream->printf(", X-MSD:0");
-                                #else
-                                new_message.stream->printf(", X-MSD:1");
-                                #endif
+                                new_message.stream->printf("FIRMWARE_NAME:Smoothieware, FIRMWARE_URL:http%%3A//smoothieware.org, X-SOURCE_CODE_URL:https%%3A//github.com/janm012012/Smoothieware-CHMT, FIRMWARE_VERSION:%s, X-FIRMWARE_BUILD_DATE:%s, X-SYSTEM_CLOCK:%ldMHz, X-AXES:%d, X-PAXES:%d, X-GRBL_MODE:%d, X-SERIAL_FLOW:NONE, X-ASW:1", vers.get_build(), vers.get_build_date(), SystemCoreClock / 1000000, MAX_ROBOT_ACTUATORS, N_PRIMARY_AXIS, THEKERNEL->is_grbl_mode());
 
                                 new_message.stream->printf("\nok\n");
                                 return;
