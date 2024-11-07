@@ -74,6 +74,7 @@ class Switch : public Module {
             uint8_t   failsafe:1;
             bool      inverting:1;
             bool      is_a_dragpin:1;
+            bool      coordinate:1;      // coordinate operation with motion, simulate a M400 before execution
         };
 };
 

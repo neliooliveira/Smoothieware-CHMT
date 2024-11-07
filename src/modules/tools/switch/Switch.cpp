@@ -49,6 +49,7 @@
 #define    dragpin_checksum             CHECKSUM("dragpin")
 #define    reduced_pwm_checksum         CHECKSUM("pwm_reduced_val")
 #define    max_pwm_ms_checksum          CHECKSUM("pwm_max_period_ms")
+#define    coordinate_checksum          CHECKSUM("coordinate")
 
 Switch::Switch() {}
 
@@ -106,8 +107,9 @@ void Switch::on_config_reload(void *argument)
     std::string ipb = THEKERNEL->config->value(switch_checksum, this->name_checksum, input_pin_behavior_checksum )->by_default("momentary")->as_string();
     this->input_pin_behavior = (ipb == "momentary") ? momentary_checksum : toggle_checksum;
     this->is_a_dragpin= THEKERNEL->config->value(switch_checksum, this->name_checksum, dragpin_checksum )->by_default(false)->as_bool();
-    this->reduced_pwm_value = THEKERNEL->config->value(switch_checksum, this->name_checksum, reduced_pwm_checksum )->by_default(50)->as_number(); 
-    this->max_pwm_ms = THEKERNEL->config->value(switch_checksum, this->name_checksum, max_pwm_ms_checksum )->by_default(10)->as_number();     
+    this->reduced_pwm_value = THEKERNEL->config->value(switch_checksum, this->name_checksum, reduced_pwm_checksum )->by_default(50)->as_number();
+    this->max_pwm_ms = THEKERNEL->config->value(switch_checksum, this->name_checksum, max_pwm_ms_checksum )->by_default(10)->as_number();
+    this->coordinate = THEKERNEL->config->value(switch_checksum, this->name_checksum, coordinate_checksum)->by_default(false)->as_bool();
 
     // if this pin is a drag pin, initialize the (hardcoded) drag-pin-up sensor
     if (this->is_a_dragpin){
@@ -259,30 +261,27 @@ void Switch::on_gcode_received(void *argument)
         return;
     }
 
-    // we need to sync this with the queue, so we need to wait for queue to empty, however due to certain slicers
-    // issuing redundant swicth on calls regularly we need to optimize by making sure the value is actually changing
-    // hence we need to do the wait for queue in each case rather than just once at the start
+    // if configured, coordinate switch activity with motion
+    if (this->coordinate) {
+        // drain queue - same as M400 does
+        THEKERNEL->conveyor->wait_for_idle();
+    }
+
     if(match_input_on_gcode(gcode)) {
         if (this->output_type == SIGMADELTA) {
             // SIGMADELTA output pin turn on (or off if S0)
             if(gcode->has_letter('S')) {
                 int v = roundf(gcode->get_value('S') * sigmadelta_pin->max_pwm() / 255.0F); // scale by max_pwm so input of 255 and max_pwm of 128 would set value to 128
                 if(v != this->sigmadelta_pin->get_pwm()){ // optimize... ignore if already set to the same pwm
-                    // drain queue
-                    THEKERNEL->conveyor->wait_for_idle();
                     this->sigmadelta_pin->pwm(v);
                     this->switch_state= (v > 0);
                 }
             } else {
-                // drain queue
-                THEKERNEL->conveyor->wait_for_idle();
                 this->sigmadelta_pin->pwm(this->switch_value);
                 this->switch_state= (this->switch_value > 0);
             }
 
         } else if (this->output_type == HWPWM) {
-            // drain queue
-            THEKERNEL->conveyor->wait_for_idle();
             // PWM output pin set duty cycle 0 - 100
             if(gcode->has_letter('S')) {
                 float v = gcode->get_value('S');
@@ -307,16 +306,12 @@ void Switch::on_gcode_received(void *argument)
             }
 
         } else if (this->output_type == DIGITAL) {
-            // drain queue
-            THEKERNEL->conveyor->wait_for_idle();
             // logic pin turn on
             this->digital_pin->set(true);
             this->switch_state = true;
         }
 
     } else if(match_input_off_gcode(gcode)) {
-        // drain queue
-        THEKERNEL->conveyor->wait_for_idle();
         this->switch_state = false;
         if (this->output_type == SIGMADELTA) {
             // SIGMADELTA output pin

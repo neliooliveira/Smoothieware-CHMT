@@ -68,18 +68,18 @@ gamma_max_rate                               125000.0         # mm/min CGR: I co
 gamma_acceleration                           31000.0          #        CGR: I couldn't get any faster in OpenPnP than with 30000
 
 # A axis: N1 rotation
-delta_steps_per_mm                           4.4444           # steps per degree: 160° per rev. @0.9° stepper = 400 steps/160° x 16 micros = 40
+delta_steps_per_mm                           4.4444           # steps per degree: 160Â° per rev. @0.9Â° stepper = 400 steps/160Â° x 16 micros = 40
 delta_step_pin                               5.14             # Pin for delta stepper step signal
 delta_dir_pin                                5.9!             # Pin for delta stepper direction
 delta_en_pin                                 nc               # Pin for delta enable
 delta_current                                0.5              # Z stepper motor current
-a_axis_max_speed                             120000           # °/min
-delta_max_rate                               120000           # °/min
-delta_acceleration                           100000           # °/sec^2
+a_axis_max_speed                             120000           # Â°/min
+delta_max_rate                               120000           # Â°/min
+delta_acceleration                           100000           # Â°/sec^2
 delta_enable                                 true
 
 # B axis: N2 rotation
-epsilon_steps_per_mm                         4.4444           # steps per mm for epsilon stepper: 8mm spindle @ 1.8° stepper = 200 steps/8mm x 16 micros = 400
+epsilon_steps_per_mm                         4.4444           # steps per mm for epsilon stepper: 8mm spindle @ 1.8Â° stepper = 200 steps/8mm x 16 micros = 400
 epsilon_step_pin                             5.15             # Pin for delta stepper step signal
 epsilon_dir_pin                              5.10!            # Pin for delta stepper direction
 epsilon_en_pin                               nc               # Pin for delta enable
@@ -165,12 +165,14 @@ switch.n1_vac.input_on_command               M800
 switch.n1_vac.input_off_command              M801
 switch.n1_vac.output_pin                     6.2
 switch.n1_vac.output_type                    digital
+switch.n1_vac.coordinate                     true	# coordinate with motion
 
 switch.n2_vac.enable                         true
 switch.n2_vac.input_on_command               M804
 switch.n2_vac.input_off_command              M805
 switch.n2_vac.output_pin                     6.3
 switch.n2_vac.output_type                    digital
+switch.n2_vac.coordinate                     true	# coordinate with motion
 
 switch.vac.enable                            true
 switch.vac.input_on_command                  M808
@@ -218,6 +220,7 @@ switch.dragpin.output_type                   hwpwm
 switch.dragpin.pwm_period_ms                 0.0625 # 16kHz
 switch.dragpin.pwm_max_period_ms             20
 switch.dragpin.pwm_reduced_val               13
+switch.dragpin.coordinate                    true	# coordinate with motion
 
 switch.buzzer.enable                         true
 switch.buzzer.input_on_command               M820
