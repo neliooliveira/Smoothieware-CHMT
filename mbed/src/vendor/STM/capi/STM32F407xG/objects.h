@@ -34,6 +34,7 @@
 #include "PortNames.h"
 #include "PeripheralNames.h"
 #include "PinNames.h"
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -72,6 +73,7 @@ struct serial_s {
     uint32_t databits;
     uint32_t stopbits;
     uint32_t parity; 
+    uint32_t hw_flowcontrol;
     PinName pin_tx;
     PinName pin_rx;
 };

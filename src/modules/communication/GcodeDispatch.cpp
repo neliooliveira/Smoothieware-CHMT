@@ -61,6 +61,16 @@ void GcodeDispatch::on_console_line_received(void *line)
     int ln = 0;
     int cs = 0;
 
+    if ( !THEKERNEL->was_normal_power_on_reset() ) {
+    	if(!THEKERNEL->is_halted()) {
+            string reset_reason = THEKERNEL->get_reset_info();
+            new_message.stream->printf(";Last reset was %s, Halting Kernel! Power cycle or M999 to continue\r\n", THEKERNEL->get_reset_info().c_str() );
+    		THEKERNEL->call_event(ON_HALT, nullptr);
+    	}
+        THEKERNEL->clear_reset_reason();
+        return;
+    }
+
     // just reply ok to empty lines
     if(possible_command.empty()) {
         new_message.stream->printf("ok\r\n");
@@ -270,7 +280,7 @@ try_again:
                             case 115: { // M115 Get firmware version and capabilities
                                 Version vers;
 
-                                new_message.stream->printf("FIRMWARE_NAME:Smoothieware, FIRMWARE_URL:http%%3A//smoothieware.org, X-SOURCE_CODE_URL:https%%3A//github.com/janm012012/Smoothieware-CHMT, FIRMWARE_VERSION:%s, X-FIRMWARE_BUILD_DATE:%s, X-SYSTEM_CLOCK:%ldMHz, X-AXES:%d, X-PAXES:%d, X-GRBL_MODE:%d, X-SERIAL_FLOW:NONE, X-ASW:1, X-COORDINATE:1", vers.get_build(), vers.get_build_date(), SystemCoreClock / 1000000, MAX_ROBOT_ACTUATORS, N_PRIMARY_AXIS, THEKERNEL->is_grbl_mode());
+                                new_message.stream->printf("FIRMWARE_NAME:Smoothieware, FIRMWARE_URL:http%%3A//smoothieware.org, X-SOURCE_CODE_URL:https%%3A//github.com/janm012012/Smoothieware-CHMT, FIRMWARE_VERSION:%s, X-FIRMWARE_BUILD_DATE:%s, X-SYSTEM_CLOCK:%ldMHz, X-AXES:%d, X-PAXES:%d, X-GRBL_MODE:%d, X-SERIAL_FLOW:%s, X-ASW:1, X-COORDINATE:1", vers.get_build(), vers.get_build_date(), SystemCoreClock / 1000000, MAX_ROBOT_ACTUATORS, N_PRIMARY_AXIS, THEKERNEL->is_grbl_mode(), THEKERNEL->has_serial_rts_cts_handshake()?"RTS/CTS":"NONE");
 
                                 new_message.stream->printf("\nok\n");
                                 return;

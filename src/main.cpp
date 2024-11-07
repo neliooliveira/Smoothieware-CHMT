@@ -102,14 +102,12 @@ void init() {
 
     Kernel* kernel = new Kernel();
 
-    kernel->streams->printf("Smoothie Running @%ldMHz\r\n", SystemCoreClock / 1000000);
-    SimpleShell::version_command("", kernel->streams);
 
     //bool sdok= (sd.disk_initialize() == 0);
     //if(!sdok) kernel->streams->printf("SDCard failed to initialize\r\n");
 
     #ifdef NONETWORK
-        kernel->streams->printf("NETWORK is disabled\r\n");
+        //~ kernel->streams->printf("NETWORK is disabled\r\n");
     #endif
 
 #if 0//def DISABLEMSD
@@ -216,7 +214,7 @@ void init() {
     if(t > 0.1F) {
         // NOTE setting WDT_RESET with the current bootloader would leave it in DFU mode which would be suboptimal
         kernel->add_module( new Watchdog(t*1000000, WDT_MRI)); // WDT_RESET));
-        kernel->streams->printf("Watchdog enabled for %f seconds\n", t);
+        //~ kernel->streams->printf("Watchdog enabled for %f seconds\n", t);
     }else{
         kernel->streams->printf("WARNING Watchdog is disabled\n");
     }

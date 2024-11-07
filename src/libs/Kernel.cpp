@@ -45,8 +45,9 @@
 #include <string>
 
 #define laser_checksum CHECKSUM("laser")
-#define baud_rate_setting_checksum CHECKSUM("baud_rate")
-#define uart0_checksum             CHECKSUM("uart0")
+#define baud_rate_setting_checksum                  CHECKSUM("baud_rate")
+#define uart0_checksum                              CHECKSUM("uart0")
+#define serial_hw_handshake_checksum                CHECKSUM("rts_cts_handshake")
 
 #define base_stepping_frequency_checksum            CHECKSUM("base_stepping_frequency")
 #define microseconds_per_step_pulse_checksum        CHECKSUM("microseconds_per_step_pulse")
@@ -63,15 +64,44 @@ Kernel::Kernel()
     halted = false;
     feed_hold = false;
     enable_feed_hold = false;
+    normal_power_on_reset = true;
+    unsigned int rcc_csr = RCC->CSR;
+
+    if (rcc_csr & RCC_CSR_BORRSTF) {
+        reset_info += "BROWN-OUT ";
+    }
+    if (rcc_csr & RCC_CSR_PINRSTF) {
+        reset_info += "PIN ";
+    }
+    if (rcc_csr & RCC_CSR_PORRSTF) {
+        reset_info += "POWER-ON ";
+    }
+    if (rcc_csr & RCC_CSR_SFTRSTF) {
+        reset_info += "SOFTWARE-RESET ";
+    }
+    if (rcc_csr & RCC_CSR_IWDGRSTF) {
+        reset_info += "INDEPENDANT-WATCHDOG ";
+    }
+    if (rcc_csr & RCC_CSR_WWDGRSTF) {
+        reset_info += "WINDOW-WATCHDOG ";
+    }
+    if (rcc_csr & RCC_CSR_LPWRRSTF) {
+        reset_info += "LOW-POWER ";
+    }
+
+    if ( !(RCC->CSR & RCC_CSR_PORRSTF) ) // Not Power on reset?
+        normal_power_on_reset = false;
+    RCC->CSR = RCC_CSR_RMVF;
+
 
     instance = this; // setup the Singleton instance of the kernel
 
     // serial first at fixed baud rate (DEFAULT_SERIAL_BAUD_RATE) so config can report errors to serial
     // Set to UART0, this will be changed to use the same UART as MRI if it's enabled
-    //this->serial = new SerialConsole(PD_5, PD_6, DEFAULT_SERIAL_BAUD_RATE);
+    //this->serial = new SerialConsole(PD_5, PD_6, NC, NC, DEFAULT_SERIAL_BAUD_RATE);
     GPIO rs422en = GPIO(PC_1);
     rs422en.write(1);
-    this->serial = new SerialConsole(PA_9, PA_10, DEFAULT_SERIAL_BAUD_RATE);
+    //this->serial = new SerialConsole(PA_9, PA_10, NC, NC, DEFAULT_SERIAL_BAUD_RATE);
 
     // Config next, but does not load cache yet
     this->config = new Config();
@@ -80,7 +110,10 @@ Kernel::Kernel()
     this->config->config_cache_load();
 
     // now config is loaded we can do normal setup for serial based on config
-    delete this->serial;
+
+    // ..but we have to wait until it is all transmitted
+    
+    //delete this->serial;
     this->serial = NULL;
 
     this->streams = new StreamOutputPool();
@@ -94,7 +127,7 @@ Kernel::Kernel()
 #if MRI_ENABLE != 0
     switch( __mriPlatform_CommUartIndex() ) {
         case 0:
-            this->serial = new(AHB0) SerialConsole(PD_5, PD_6, this->config->value(uart0_checksum, baud_rate_setting_checksum)->by_default(DEFAULT_SERIAL_BAUD_RATE)->as_number());
+            this->serial = new(AHB0) SerialConsole(PD_5, PD_6, NC, NC, this->config->value(uart0_checksum, baud_rate_setting_checksum)->by_default(DEFAULT_SERIAL_BAUD_RATE)->as_number());
             break;
         case 1:
             // TODO STM32 fix uart pin mapping
@@ -108,10 +141,14 @@ Kernel::Kernel()
             break;
     }
 #endif
-    // default
+    
+    this->serial_hw_handshake = this->config->value( serial_hw_handshake_checksum )->by_default(false)->as_bool();
+    
     if(this->serial == NULL) {
-        //this->serial = new(AHB0) SerialConsole(PD_5, PD_6, this->config->value(uart0_checksum, baud_rate_setting_checksum)->by_default(DEFAULT_SERIAL_BAUD_RATE)->as_number());
-        this->serial = new(AHB0) SerialConsole(PA_9, PA_10, this->config->value(uart0_checksum, baud_rate_setting_checksum)->by_default(DEFAULT_SERIAL_BAUD_RATE)->as_number());
+        if( this->serial_hw_handshake )
+            this->serial = new(AHB0) SerialConsole(PA_9, PA_10, PA_12, PA_11, this->config->value(uart0_checksum, baud_rate_setting_checksum)->by_default(DEFAULT_SERIAL_BAUD_RATE)->as_number());
+        else
+            this->serial = new(AHB0) SerialConsole(PA_9, PA_10, NC, NC, this->config->value(uart0_checksum, baud_rate_setting_checksum)->by_default(DEFAULT_SERIAL_BAUD_RATE)->as_number());
     }
 
     //some boards don't have leds.. TOO BAD!
@@ -129,7 +166,7 @@ Kernel::Kernel()
     this->ok_per_line = this->config->value( ok_per_line_checksum )->by_default(true)->as_bool();
 
     this->add_module( this->serial );
-    this->add_module(new(AHB0) SerialConsole(PD_5, PD_6, this->config->value(uart0_checksum, baud_rate_setting_checksum)->by_default(DEFAULT_SERIAL_BAUD_RATE)->as_number()));
+    //this->add_module(new(AHB0) SerialConsole(PD_5, PD_6, NC, NC, this->config->value(uart0_checksum, baud_rate_setting_checksum)->by_default(DEFAULT_SERIAL_BAUD_RATE)->as_number()));
     //this->add_module(new(AHB0) SerialConsole(PA_9, PA_10, this->config->value(uart0_checksum, baud_rate_setting_checksum)->by_default(DEFAULT_SERIAL_BAUD_RATE)->as_number()));
 
     // HAL stuff
@@ -159,10 +196,11 @@ Kernel::Kernel()
         if( NVIC_GetPriority(USART3_IRQn) > 0 ) { NVIC_SetPriority(USART3_IRQn, 5); }
         if( NVIC_GetPriority(UART4_IRQn) > 0 ) { NVIC_SetPriority(UART4_IRQn, 5); }
     } else {
-        NVIC_SetPriority(USART1_IRQn, 5);
-        NVIC_SetPriority(USART2_IRQn, 5);
-        NVIC_SetPriority(USART3_IRQn, 5);
-        NVIC_SetPriority(UART4_IRQn, 5);
+        NVIC_SetPriority(USART1_IRQn, 6);
+        NVIC_SetPriority(USART2_IRQn, 6);
+        NVIC_SetPriority(USART3_IRQn, 6);
+        NVIC_SetPriority(UART4_IRQn, 6);
+        NVIC_SetPriority(DMA2_Stream2_IRQn, 6); // DMA for USART1 rx
     }
 
     // Configure the step ticker
