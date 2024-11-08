@@ -26,7 +26,7 @@ SerialConsole::SerialConsole( PinName rx_pin, PinName tx_pin, PinName rts_pin, P
     this->serial = new mbed::Serial( rx_pin, tx_pin, rts_pin, cts_pin );
     this->serial->baud(baud_rate);
     
-    if ( rts_pin ) {
+    if ( rts_pin != NC ) {
         this->rts_signal = new GPIO(rts_pin) ;
         this->rts_signal->clear();
         flow_control = true;
@@ -128,7 +128,7 @@ void SerialConsole::on_main_loop(void * argument){
             p = buf_start;
         tail = p; 
 
-        if (rts_signal_is_set) {
+        if (flow_control && rts_signal_is_set) {
             int free_space;
 
             // Get updated head, there maybe much more that have come in behind our back,
