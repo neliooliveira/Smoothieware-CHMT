@@ -91,6 +91,7 @@ void serial_init(serial_t *obj, PinName tx, PinName rx, PinName rts, PinName cts
             break;
         case UART_2:
             __HAL_RCC_USART2_CLK_ENABLE();
+            __DMA1_CLK_ENABLE(); 
             obj->index = 1;
             break;
 #if defined(USART3_BASE)
@@ -274,13 +275,29 @@ void serial_format(serial_t *obj, int data_bits, SerialParity parity, int stop_b
 /******************************************************************************
  * INTERRUPTS HANDLING
  ******************************************************************************/
+// this code is used for USART2, which is used on CHM-T36VA (RS232)
+static void dma1_irq( void )
+{
+    if ( DMA1->HISR & DMA_HISR_TCIF5 )
+    {
+        irq_handler(serial_irq_ids[1], DmaTCIrq);
+    }
+    if ( DMA1->HISR & DMA_HISR_HTIF5 )
+    {
+        irq_handler(serial_irq_ids[1], DmaHFIrq);
+    }
+    
+    DMA1->HIFCR |= DMA_HISR_TCIF5 | DMA_HISR_HTIF5 | DMA_HISR_TEIF5 | DMA_HISR_DMEIF5 | DMA_HISR_FEIF5;    
+}
+
+// this code is used for USART1, which is used on CHM-T48VB (RS422)
 static void dma2_irq( void )
 {
     if ( DMA2->LISR & DMA_LISR_TCIF2 )
     {
         irq_handler(serial_irq_ids[0], DmaTCIrq);
     }
-    else if ( DMA2->LISR & DMA_LISR_HTIF2 )
+    if ( DMA2->LISR & DMA_LISR_HTIF2 )
     {
         irq_handler(serial_irq_ids[0], DmaHFIrq);
     }
@@ -359,21 +376,44 @@ static void uart8_irq(void)
 }
 #endif
 
-void serial_activate_rxdma( unsigned char* rx_buffer, int len )
+void serial_activate_rxdma(serial_t *obj, unsigned char* rx_buffer, int len )
 {
-    // Clear /half/complete/ flags, in the event they are set..
-    DMA2->LIFCR |= DMA_LISR_TCIF2 | DMA_LISR_HTIF2 | DMA_LISR_TEIF2 | DMA_LISR_DMEIF2 | DMA_LISR_FEIF2;
+	switch (obj->uart) {
+		case UART_1:
+		    // Clear /half/complete/ flags, in the event they are set..
+            DMA2->LIFCR |= DMA_LISR_TCIF2 | DMA_LISR_HTIF2 | DMA_LISR_TEIF2 | DMA_LISR_DMEIF2 | DMA_LISR_FEIF2;
 
-    DMA2_Stream2->NDTR = len;
-    DMA2_Stream2->PAR = (uint32_t)&(USART1->DR);
-    DMA2_Stream2->M0AR = (uint32_t)rx_buffer;
+            DMA2_Stream2->NDTR = len;
+            DMA2_Stream2->PAR = (uint32_t)&(USART1->DR);
+            DMA2_Stream2->M0AR = (uint32_t)rx_buffer;
+		
+            DMA2_Stream2->CR = (0x4 << DMA_SxCR_CHSEL_Pos) | DMA_SxCR_MINC | DMA_SxCR_PL_1 | DMA_SxCR_PL_0 | DMA_SxCR_CIRC | DMA_SxCR_HTIE | DMA_SxCR_TCIE; // DMA FIFO is not enabled, to make things easier.
+		
+            USART1->SR &= ~USART_SR_IDLE;
 
-    DMA2_Stream2->CR = (0x4 << DMA_SxCR_CHSEL_Pos) | DMA_SxCR_MINC | DMA_SxCR_PL_1 | DMA_SxCR_PL_0 | DMA_SxCR_CIRC | DMA_SxCR_HTIE | DMA_SxCR_TCIE; // DMA FIFO is not enabled, to make things easier.
+            DMA2_Stream2->CR |= DMA_SxCR_EN;
+            USART1->CR3 |= USART_CR3_DMAR;
+            break;
+		    
+        case UART_2:
+		    // Clear /half/complete/ flags, in the event they are set..
+            DMA1->HIFCR |= DMA_HISR_TCIF5 | DMA_HISR_HTIF5 | DMA_HISR_TEIF5 | DMA_HISR_DMEIF5 | DMA_HISR_FEIF5;
 
-    USART1->SR &= ~USART_SR_IDLE;
+            DMA1_Stream5->NDTR = len;
+            DMA1_Stream5->PAR = (uint32_t)&(USART2->DR);
+            DMA1_Stream5->M0AR = (uint32_t)rx_buffer;
+		
+            DMA1_Stream5->CR = (0x4 << DMA_SxCR_CHSEL_Pos) | DMA_SxCR_MINC | DMA_SxCR_PL_1 | DMA_SxCR_PL_0 | DMA_SxCR_CIRC | DMA_SxCR_HTIE | DMA_SxCR_TCIE; // DMA FIFO is not enabled, to make things easier.
+		
+            USART2->SR &= ~USART_SR_IDLE;
 
-    DMA2_Stream2->CR |= DMA_SxCR_EN;
-    USART1->CR3 |= USART_CR3_DMAR;
+            DMA1_Stream5->CR |= DMA_SxCR_EN;
+            USART2->CR3 |= USART_CR3_DMAR;
+            break;
+
+		default:
+		    break;
+    }
 }
 
 void serial_irq_handler(serial_t *obj, uart_irq_handler handler, uint32_t id)
@@ -400,6 +440,8 @@ void serial_irq_set(serial_t *obj, SerialIrq irq, uint32_t enable)
         case UART_2:
             irq_n = USART2_IRQn;
             vector = (uint32_t)&uart2_irq;
+            dma_vector= ((uint32_t)&dma1_irq);
+            dma_irq_n = DMA1_Stream5_IRQn;
             break;
 #if defined(USART3_BASE)
         case UART_3:
@@ -515,53 +557,111 @@ void serial_putc(serial_t *obj, int c)
 #define POST_TX_WAIT /* To remedy txt_after_ok, such as vacuum */
 void serial_send_string( serial_t *obj, const char *str )
 {
+    USART_TypeDef *uart = (USART_TypeDef *)(obj->uart);
 	int status;
     int len = strlen(str);
+    
+    switch (obj->uart) {
+    	case UART_1:
 #ifndef POST_TX_WAIT
-    // Still ongoinging with job?
-    if( DMA2_Stream7->CR & DMA_SxCR_EN )
-    {
-        do {
-            status = ((__HAL_UART_GET_FLAG(&UartHandle, UART_FLAG_TXE) != RESET) ? 1 : 0);
-        } while (!status);
+            // Still ongoinging with job?
+            if( DMA2_Stream7->CR & DMA_SxCR_EN )
+            {
+                do {
+					status = serial_writeable(obj);
+                } while (!status);
 
-        do {
-        	status = (DMA2->HISR & DMA_HISR_TCIF7 );
-        } while (!status);
-        DMA2_Stream7->CR &= ~DMA_SxCR_EN;
-        USART1->CR3 &= ~USART_CR3_DMAT;
-    }
+                do {
+        	        status = (DMA2->HISR & DMA_HISR_TCIF7 );
+                } while (!status);
+                DMA2_Stream7->CR &= ~DMA_SxCR_EN;
+                uart->CR3 &= ~USART_CR3_DMAT;
+            }
 #endif
-    // Clear /half/complete/ flags from last tx..
-    DMA2->HIFCR |= DMA_HISR_TCIF7 | DMA_HISR_HTIF7;
+            // Clear /half/complete/ flags from last tx..
+            DMA2->HIFCR |= DMA_HISR_TCIF7 | DMA_HISR_HTIF7;
 
-    if(DMA2->HISR & (DMA_HISR_TEIF7 | DMA_HISR_DMEIF7 | DMA_HISR_FEIF7 )) { // error on DMA
-    	DMA2->HIFCR |= (DMA_HISR_TEIF7 | DMA_HISR_DMEIF7 | DMA_HISR_FEIF7 ); // should never happen.
-    }
+            if(DMA2->HISR & (DMA_HISR_TEIF7 | DMA_HISR_DMEIF7 | DMA_HISR_FEIF7 )) { // error on DMA
+    	        DMA2->HIFCR |= (DMA_HISR_TEIF7 | DMA_HISR_DMEIF7 | DMA_HISR_FEIF7 ); // should never happen.
+            }
 
-    DMA2_Stream7->NDTR = len;
-    DMA2_Stream7->PAR = (uint32_t)&(USART1->DR);
-    DMA2_Stream7->M0AR = (uint32_t)str;
-    DMA2_Stream7->FCR |= DMA_SxFCR_DMDIS;
+            DMA2_Stream7->NDTR = len;
+            DMA2_Stream7->PAR = (uint32_t)&(uart->DR);
+            DMA2_Stream7->M0AR = (uint32_t)str;
+            DMA2_Stream7->FCR |= DMA_SxFCR_DMDIS;
 
-    DMA2_Stream7->CR = (0x4 << DMA_SxCR_CHSEL_Pos) | DMA_SxCR_MINC | DMA_SxCR_DIR_0 | DMA_SxCR_PL_1 | DMA_SxCR_MSIZE_1;
+            DMA2_Stream7->CR = (0x4 << DMA_SxCR_CHSEL_Pos) | DMA_SxCR_MINC | DMA_SxCR_DIR_0 | DMA_SxCR_PL_1 | DMA_SxCR_MSIZE_1;
 
-    USART1->SR &= ~USART_SR_TC;
+            uart->SR &= ~USART_SR_TC;
 
-    DMA2_Stream7->CR |= DMA_SxCR_EN;
-    USART1->CR3 |= USART_CR3_DMAT;
+            DMA2_Stream7->CR |= DMA_SxCR_EN;
+            uart->CR3 |= USART_CR3_DMAT;
 #ifdef POST_TX_WAIT
-    // wait for dma and then tx to finish
-    do {
-    	status = (DMA2->HISR & DMA_HISR_TCIF7 );
-    } while (!status);
+            // wait for dma and then tx to finish
+            do {
+    	        status = (DMA2->HISR & DMA_HISR_TCIF7 );
+            } while (!status);
 #if 0
-    do {
-        status = ((__HAL_UART_GET_FLAG(&UartHandle, UART_FLAG_TC) != RESET) ? 1 : 0);
-    } while (!status);
+            do {
+                status = ((__HAL_UART_GET_FLAG(&UartHandle, UART_FLAG_TC) != RESET) ? 1 : 0);
+            } while (!status);
 #endif
-    USART1->CR3 &= ~USART_CR3_DMAT;
+            uart->CR3 &= ~USART_CR3_DMAT;
 #endif
+		    break;
+
+    	case UART_2:
+#ifndef POST_TX_WAIT
+            // Still ongoinging with job?
+            if( DMA1_Stream6->CR & DMA_SxCR_EN )
+            {
+                do {
+					status = serial_writeable(obj);
+                    status = ((__HAL_UART_GET_FLAG(&UartHandle, UART_FLAG_TXE) != RESET) ? 1 : 0);
+                } while (!status);
+
+                do {
+        	        status = (DMA2->HISR & DMA_HISR_TCIF7 );
+                } while (!status);
+                DMA1_Stream6->CR &= ~DMA_SxCR_EN;
+                uart->CR3 &= ~USART_CR3_DMAT;
+            }
+#endif
+            // Clear /half/complete/ flags from last tx..
+            DMA1->HIFCR |= DMA_HISR_TCIF6 | DMA_HISR_HTIF6;
+
+            if(DMA1->HISR & (DMA_HISR_TEIF6 | DMA_HISR_DMEIF6 | DMA_HISR_FEIF6 )) { // error on DMA
+    	        DMA1->HIFCR |= (DMA_HISR_TEIF6 | DMA_HISR_DMEIF6 | DMA_HISR_FEIF6 ); // should never happen.
+            }
+
+            DMA1_Stream6->NDTR = len;
+            DMA1_Stream6->PAR = (uint32_t)&(uart->DR);
+            DMA1_Stream6->M0AR = (uint32_t)str;
+            DMA1_Stream6->FCR |= DMA_SxFCR_DMDIS;
+
+            DMA1_Stream6->CR = (0x4 << DMA_SxCR_CHSEL_Pos) | DMA_SxCR_MINC | DMA_SxCR_DIR_0 | DMA_SxCR_PL_1 | DMA_SxCR_MSIZE_1;
+
+            uart->SR &= ~USART_SR_TC;
+
+            DMA1_Stream6->CR |= DMA_SxCR_EN;
+            uart->CR3 |= USART_CR3_DMAT;
+#ifdef POST_TX_WAIT
+            // wait for dma and then tx to finish
+            do {
+    	        status = (DMA1->HISR & DMA_HISR_TCIF6 );
+            } while (!status);
+#if 0
+            do {
+                status = ((__HAL_UART_GET_FLAG(&UartHandle, UART_FLAG_TC) != RESET) ? 1 : 0);
+            } while (!status);
+#endif
+            uart->CR3 &= ~USART_CR3_DMAT;
+#endif
+		    break;
+		    
+		default:
+		    break;
+    }
 }
 
 int serial_get_dma_buffer_index(serial_t *obj)

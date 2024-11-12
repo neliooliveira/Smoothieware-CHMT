@@ -1,5 +1,3 @@
-# This state does not yet work - commit [[https://github.com/janm012012/Smoothieware-CHMT/commit/f306fb6256647447e799c124dffefa7ebee5d7d8|f306fb]] provides the last good version.
-
 # SMOOTHIEWARE-CHMT
 This is a special Smoothieware firmware for the control board of the Charmhigh CHM-T36VA, CHM-T48VB and equivalent.
 It is based on an old STM32 port of Smmothieware and specially tailored for the Charmhigh mainboard.
