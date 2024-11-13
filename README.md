@@ -5,7 +5,7 @@ It is based on an old STM32 port of Smmothieware and specially tailored for the 
 Precompiled firmware is available in the STM32F407xG folder. To flash the mainboard, a full chip erase is required. While flashing, the vacuum pump and the blower will run at 100% making some noise. This does not harm for the time the flashing takes. This firmware supports M115, which is used by OpenPnP for detection. Based this this, Issues & Solutions supports mostly automatic configuration. A sample machine.xml is available in this repository. It may serve as a quick start, however using Issues & Solutions on a fresh installation (no machine.xml in ~/.openpnp2) is recommended.
 
 ### !! Attention !! 
-This version has not yet been tested on CHM-T48VB (with RS422). If you have any test results, please report. The last known good commit is [[https://github.com/janm012012/Smoothieware-CHMT/commit/f306fb6256647447e799c124dffefa7ebee5d7d8|f306fb]].
+This version has not yet been tested on CHM-T48VB (with RS422). If you have any test results, please report. The last known good commit is [f306fb](https://github.com/janm012012/Smoothieware-CHMT/tree/f306fb6256647447e799c124dffefa7ebee5d7d8).
 
 ## New features:
 * rts_cts_handshake can now have different values: 0: default serial configuration without RTS/CTS, 1: UART2 only with vespamans RTS/CTS configuration detailed below, 2: USART2 only for CHMT-36VA with RTS on TX of second serial connector
