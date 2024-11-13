@@ -111,7 +111,9 @@ eta_enable                                   true
 
 # Serial communications configuration ( baud rate default to 9600 if undefined )
 uart0.baud_rate                              115200           # Baud rate for the default hardware serial port
-rts_cts_handshake                            false            # use rts/cts signals for handshake. (Needs patched pcb) false will disable handshake.
+rts_cts_handshake                            0                # 0: no RTS/CTS handshake, both serial ports
+                                                              # 1: vespamans RTS/CTS on modified 48VB, UART2 only
+                                                              # 2: janms RTS via TX on second RS232 connector on stock CHM-T36VA, UART1 only
 msd_disable                                  true             # disable the MSD (USB SDCARD) when set to true (needs special binary)
 dfu_enable                                   false            # for linux developers, set to true to enable DFU
 

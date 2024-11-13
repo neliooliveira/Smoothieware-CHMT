@@ -142,18 +142,8 @@ Kernel::Kernel()
     }
 #endif
     
-    this->serial_hw_handshake = this->config->value( serial_hw_handshake_checksum )->by_default(false)->as_bool();
+    this->serial_hw_handshake = this->config->value( serial_hw_handshake_checksum )->by_default(0)->as_number();
     
-    if(this->serial == NULL) {
-        // this is USART1 proving the RS422 input on the CHM-T48VB
-        if( this->serial_hw_handshake )
-            // with "rts_cts_handshake" defined, configure the hardware as modified by vespaman
-            this->serial = new(AHB0) SerialConsole(PA_9, PA_10, PA_12, PA_11, this->config->value(uart0_checksum, baud_rate_setting_checksum)->by_default(DEFAULT_SERIAL_BAUD_RATE)->as_number());
-        else
-            // without "rts_cts_handshake" use the default CHM-T48VB interface
-            this->serial = new(AHB0) SerialConsole(PA_9, PA_10, NC, NC, this->config->value(uart0_checksum, baud_rate_setting_checksum)->by_default(DEFAULT_SERIAL_BAUD_RATE)->as_number());
-    }
-
     //some boards don't have leds.. TOO BAD!
     this->use_leds = !this->config->value( disable_leds_checksum )->by_default(false)->as_bool();
 
@@ -168,9 +158,25 @@ Kernel::Kernel()
     // we expect ok per line now not per G code, setting this to false will return to the old (incorrect) way of ok per G code
     this->ok_per_line = this->config->value( ok_per_line_checksum )->by_default(true)->as_bool();
 
+    switch (this->serial_hw_handshake) {
+    	case 0:
+            // this is the RS232 interface on CHM-T36VA
+            this->serial = new(AHB0) SerialConsole(PA_9, PA_10, PD_5, NC, this->config->value(uart0_checksum, baud_rate_setting_checksum)->by_default(DEFAULT_SERIAL_BAUD_RATE)->as_number());
+            // this is USART2, providing RS422 interface on CHM-T48VB
+            this->add_module(new(AHB0) SerialConsole(PD_5, PD_6, NC, NC, this->config->value(uart0_checksum, baud_rate_setting_checksum)->by_default(DEFAULT_SERIAL_BAUD_RATE)->as_number()));
+			break;
+			
+		case 1:
+            // vespamans configuration: RTS/CTS on a modified CHM-T48VB mainboard
+            this->serial = new(AHB0) SerialConsole(PA_9, PA_10, PA_12, PA_11, this->config->value(uart0_checksum, baud_rate_setting_checksum)->by_default(DEFAULT_SERIAL_BAUD_RATE)->as_number());
+            break;
+            
+        case 2:
+            // vespamans special 36VA configuration: RTS via PD_5 (TX on second/lower RS232 connector) on CHM-T36VA mainboard
+            this->serial = new(AHB0) SerialConsole(PA_9, PA_10, PD_5, NC, this->config->value(uart0_checksum, baud_rate_setting_checksum)->by_default(DEFAULT_SERIAL_BAUD_RATE)->as_number());
+            break;
+    }
     this->add_module( this->serial );
-    // this is USART2, providing via U28 and U32 the RS232 input of the CHM-T36VA
-    this->add_module(new(AHB0) SerialConsole(PD_5, PD_6, NC, NC, this->config->value(uart0_checksum, baud_rate_setting_checksum)->by_default(DEFAULT_SERIAL_BAUD_RATE)->as_number()));
 
     // HAL stuff
     add_module( this->slow_ticker = new SlowTicker());

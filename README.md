@@ -4,7 +4,11 @@ It is based on an old STM32 port of Smmothieware and specially tailored for the 
 
 Precompiled firmware is available in the STM32F407xG folder. To flash the mainboard, a full chip erase is required. While flashing, the vacuum pump and the blower will run at 100% making some noise. This does not harm for the time the flashing takes. This firmware supports M115, which is used by OpenPnP for detection. Based this this, Issues & Solutions supports mostly automatic configuration. A sample machine.xml is available in this repository. It may serve as a quick start, however using Issues & Solutions on a fresh installation (no machine.xml in ~/.openpnp2) is recommended.
 
+### !! Attention !! 
+This version has not yet been tested on CHM-T48VB (with RS422). If you have any test results, please report. The last known good commit is [[https://github.com/janm012012/Smoothieware-CHMT/commit/f306fb6256647447e799c124dffefa7ebee5d7d8|f306fb]].
+
 ## New features:
+* rts_cts_handshake can now have different values: 0: default serial configuration without RTS/CTS, 1: UART2 only with vespamans RTS/CTS configuration detailed below, 2: USART2 only for CHMT-36VA with RTS on TX of second serial connector
 * Serial bitrate up to 4Mbit with or without RTS/CTS (with DMA)
 * Removed machine coordination of actuators in FW, letting OpenPnP deal with them as it should be. Original code always waited for machine to be still before enabling e.g. down led.
 * Improved vacuum sensing. With all the speed-up, the vacuum sensing gave away that it dit not actually update the value very often (only every 50ms), rendering it useless. Now it is updated every millisecond.
@@ -16,8 +20,6 @@ Precompiled firmware is available in the STM32F407xG folder. To flash the mainbo
 ASW is dependant on the smart drag pin activation code. Both can be enabled by adding a new property "switch.dragpin.dragpin true" to the group of switch.dragpin in the config.default. This property tells the generic code, that this pin is connected to a drag pin, and to activate the advanced mechanisms. Setting its value to false disables any advanced logic.
 
 Hardware flow control can be disabled by setting rts_cts_handshake to false in config.defaults. So in theory, this branch should work with stock machine, up to 115200 Baud (CHM-T36), as long as confirmation flow control is still enabled in OpenPnP. (115200 comes from the limitation of the rs232 level shifter, U32, populated on the controller board). A CHM-T48 should be able to achieve 480kBaud, limited by the rs422 interface driver.
-
-In theory, a CHMT36 should be able to be set-up to use RTS control without doing any board changes, by specifying the UART2 tx pin in Kernel.cpp as rts pin (set cts to NC). This has not yet been tested. Then you would at least no longer need "Confirmation Flow Control".
 
 In order to benefit from higher throughput and hardware flow control, you will need to modify your control board.
 The changes needed, can be defined in two groups; one for the actual hardware flow control, and one for increased bitrate.

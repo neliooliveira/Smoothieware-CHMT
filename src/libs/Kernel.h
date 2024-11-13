@@ -89,9 +89,9 @@ class Kernel {
             bool feed_hold:1;
             bool ok_per_line:1;
             bool enable_feed_hold:1;
-            bool serial_hw_handshake:1;
             bool normal_power_on_reset:1;
         };
+        unsigned char     serial_hw_handshake;		// support different types: 0: no handshake, 1: vespamans RTS/CTS on 48VB, 2: janm012012 RTS on 36VA
 
 };
 
