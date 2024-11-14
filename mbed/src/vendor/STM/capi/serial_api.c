@@ -275,7 +275,6 @@ void serial_format(serial_t *obj, int data_bits, SerialParity parity, int stop_b
 /******************************************************************************
  * INTERRUPTS HANDLING
  ******************************************************************************/
-// this code is used for USART2, which is used on CHM-T36VA (RS232)
 static void dma1_irq( void )
 {
     if ( DMA1->HISR & DMA_HISR_TCIF5 )
@@ -290,7 +289,6 @@ static void dma1_irq( void )
     DMA1->HIFCR |= DMA_HISR_TCIF5 | DMA_HISR_HTIF5 | DMA_HISR_TEIF5 | DMA_HISR_DMEIF5 | DMA_HISR_FEIF5;    
 }
 
-// this code is used for USART1, which is used on CHM-T48VB (RS422)
 static void dma2_irq( void )
 {
     if ( DMA2->LISR & DMA_LISR_TCIF2 )
@@ -558,22 +556,15 @@ void serial_putc(serial_t *obj, int c)
 void serial_send_string( serial_t *obj, const char *str )
 {
     USART_TypeDef *uart = (USART_TypeDef *)(obj->uart);
-	int status;
     int len = strlen(str);
     
     switch (obj->uart) {
     	case UART_1:
 #ifndef POST_TX_WAIT
             // Still ongoinging with job?
-            if( DMA2_Stream7->CR & DMA_SxCR_EN )
-            {
-                do {
-					status = serial_writeable(obj);
-                } while (!status);
-
-                do {
-        	        status = (DMA2->HISR & DMA_HISR_TCIF7 );
-                } while (!status);
+            if (DMA2_Stream7->CR & DMA_SxCR_EN) {
+                while {! (DMA2->HISR & DMA_HISR_TCIF7))
+                    ;
                 DMA2_Stream7->CR &= ~DMA_SxCR_EN;
                 uart->CR3 &= ~USART_CR3_DMAT;
             }
@@ -597,15 +588,10 @@ void serial_send_string( serial_t *obj, const char *str )
             DMA2_Stream7->CR |= DMA_SxCR_EN;
             uart->CR3 |= USART_CR3_DMAT;
 #ifdef POST_TX_WAIT
-            // wait for dma and then tx to finish
-            do {
-    	        status = (DMA2->HISR & DMA_HISR_TCIF7 );
-            } while (!status);
-#if 0
-            do {
-                status = ((__HAL_UART_GET_FLAG(&UartHandle, UART_FLAG_TC) != RESET) ? 1 : 0);
-            } while (!status);
-#endif
+            // wait for dma to finish
+            while (! (DMA2->HISR & DMA_HISR_TCIF7))
+                ;
+            DMA2_Stream7->CR &= ~DMA_SxCR_EN;
             uart->CR3 &= ~USART_CR3_DMAT;
 #endif
 		    break;
@@ -613,16 +599,9 @@ void serial_send_string( serial_t *obj, const char *str )
     	case UART_2:
 #ifndef POST_TX_WAIT
             // Still ongoinging with job?
-            if( DMA1_Stream6->CR & DMA_SxCR_EN )
-            {
-                do {
-					status = serial_writeable(obj);
-                    status = ((__HAL_UART_GET_FLAG(&UartHandle, UART_FLAG_TXE) != RESET) ? 1 : 0);
-                } while (!status);
-
-                do {
-        	        status = (DMA2->HISR & DMA_HISR_TCIF7 );
-                } while (!status);
+            if (DMA1_Stream6->CR & DMA_SxCR_EN) {
+                while (!(DMA1->HISR & DMA_HISR_TCIF6))
+                    ;
                 DMA1_Stream6->CR &= ~DMA_SxCR_EN;
                 uart->CR3 &= ~USART_CR3_DMAT;
             }
@@ -646,15 +625,10 @@ void serial_send_string( serial_t *obj, const char *str )
             DMA1_Stream6->CR |= DMA_SxCR_EN;
             uart->CR3 |= USART_CR3_DMAT;
 #ifdef POST_TX_WAIT
-            // wait for dma and then tx to finish
-            do {
-    	        status = (DMA1->HISR & DMA_HISR_TCIF6 );
-            } while (!status);
-#if 0
-            do {
-                status = ((__HAL_UART_GET_FLAG(&UartHandle, UART_FLAG_TC) != RESET) ? 1 : 0);
-            } while (!status);
-#endif
+            // wait for dma to finish
+            while (!(DMA1->HISR & DMA_HISR_TCIF6))
+                ;
+            DMA1_Stream6->CR &= ~DMA_SxCR_EN;
             uart->CR3 &= ~USART_CR3_DMAT;
 #endif
 		    break;

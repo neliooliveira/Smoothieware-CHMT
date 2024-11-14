@@ -207,9 +207,8 @@ Kernel::Kernel()
     } else {
         NVIC_SetPriority(USART1_IRQn, 6);
         NVIC_SetPriority(USART2_IRQn, 6);
-        NVIC_SetPriority(USART3_IRQn, 6);
-        NVIC_SetPriority(UART4_IRQn, 6);
         NVIC_SetPriority(DMA2_Stream2_IRQn, 6); // DMA for USART1 rx
+        NVIC_SetPriority(DMA1_Stream5_IRQn, 6); // DMA for USART2 rx
     }
 
     // Configure the step ticker
