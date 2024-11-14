@@ -560,77 +560,81 @@ void serial_send_string( serial_t *obj, const char *str )
     
     switch (obj->uart) {
     	case UART_1:
-#ifndef POST_TX_WAIT
-            // Still ongoinging with job?
-            if (DMA2_Stream7->CR & DMA_SxCR_EN) {
-                while {! (DMA2->HISR & DMA_HISR_TCIF7))
-                    ;
-                DMA2_Stream7->CR &= ~DMA_SxCR_EN;
-                uart->CR3 &= ~USART_CR3_DMAT;
-            }
-#endif
-            // Clear /half/complete/ flags from last tx..
-            DMA2->HIFCR |= DMA_HISR_TCIF7 | DMA_HISR_HTIF7;
+    		do {
+                // wait for end of active dma operation
+                if (DMA2_Stream7->CR & DMA_SxCR_EN) {
+                    while (! (DMA2->HISR & DMA_HISR_TCIF7))
+                        ;
+                    DMA2_Stream7->CR &= ~DMA_SxCR_EN;
+                    uart->CR3 &= ~USART_CR3_DMAT;
+                }
 
-            if(DMA2->HISR & (DMA_HISR_TEIF7 | DMA_HISR_DMEIF7 | DMA_HISR_FEIF7 )) { // error on DMA
-    	        DMA2->HIFCR |= (DMA_HISR_TEIF7 | DMA_HISR_DMEIF7 | DMA_HISR_FEIF7 ); // should never happen.
-            }
+                // Clear /half/complete/ flags from last tx..
+                DMA2->HIFCR |= DMA_HISR_TCIF7 | DMA_HISR_HTIF7;
 
-            DMA2_Stream7->NDTR = len;
-            DMA2_Stream7->PAR = (uint32_t)&(uart->DR);
-            DMA2_Stream7->M0AR = (uint32_t)str;
-            DMA2_Stream7->FCR |= DMA_SxFCR_DMDIS;
+                if(DMA2->HISR & (DMA_HISR_TEIF7 | DMA_HISR_DMEIF7 | DMA_HISR_FEIF7 )) { // error on DMA
+                    DMA2->HIFCR |= (DMA_HISR_TEIF7 | DMA_HISR_DMEIF7 | DMA_HISR_FEIF7 ); // should never happen.
+                }
 
-            DMA2_Stream7->CR = (0x4 << DMA_SxCR_CHSEL_Pos) | DMA_SxCR_MINC | DMA_SxCR_DIR_0 | DMA_SxCR_PL_1 | DMA_SxCR_MSIZE_1;
+			    // copy as much data as possible into dmatxbuffer
+			    unsigned int n = len;
+			    if (n > sizeof(obj->dmatxbuffer))
+			        n = sizeof(obj->dmatxbuffer);
+			    memcpy(obj->dmatxbuffer, str, n);
+			    str += n;
+			    len -= n;
 
-            uart->SR &= ~USART_SR_TC;
+                DMA2_Stream7->NDTR = n;
+                DMA2_Stream7->PAR = (uint32_t)&(uart->DR);
+                DMA2_Stream7->M0AR = (uint32_t)obj->dmatxbuffer;
+                DMA2_Stream7->FCR |= DMA_SxFCR_DMDIS;
 
-            DMA2_Stream7->CR |= DMA_SxCR_EN;
-            uart->CR3 |= USART_CR3_DMAT;
-#ifdef POST_TX_WAIT
-            // wait for dma to finish
-            while (! (DMA2->HISR & DMA_HISR_TCIF7))
-                ;
-            DMA2_Stream7->CR &= ~DMA_SxCR_EN;
-            uart->CR3 &= ~USART_CR3_DMAT;
-#endif
+                DMA2_Stream7->CR = (0x4 << DMA_SxCR_CHSEL_Pos) | DMA_SxCR_MINC | DMA_SxCR_DIR_0 | DMA_SxCR_PL_1 | DMA_SxCR_MSIZE_1;
+
+                uart->SR &= ~USART_SR_TC;
+
+                DMA2_Stream7->CR |= DMA_SxCR_EN;
+                uart->CR3 |= USART_CR3_DMAT;
+            } while (len > 0);
 		    break;
 
     	case UART_2:
-#ifndef POST_TX_WAIT
-            // Still ongoinging with job?
-            if (DMA1_Stream6->CR & DMA_SxCR_EN) {
-                while (!(DMA1->HISR & DMA_HISR_TCIF6))
-                    ;
-                DMA1_Stream6->CR &= ~DMA_SxCR_EN;
-                uart->CR3 &= ~USART_CR3_DMAT;
-            }
-#endif
-            // Clear /half/complete/ flags from last tx..
-            DMA1->HIFCR |= DMA_HISR_TCIF6 | DMA_HISR_HTIF6;
+    		do {
+                // wait for end of active dma operation
+                if (DMA1_Stream6->CR & DMA_SxCR_EN) {
+                    while (!(DMA1->HISR & DMA_HISR_TCIF6))
+                        ;
+                    DMA1_Stream6->CR &= ~DMA_SxCR_EN;
+                    uart->CR3 &= ~USART_CR3_DMAT;
+                }
 
-            if(DMA1->HISR & (DMA_HISR_TEIF6 | DMA_HISR_DMEIF6 | DMA_HISR_FEIF6 )) { // error on DMA
-    	        DMA1->HIFCR |= (DMA_HISR_TEIF6 | DMA_HISR_DMEIF6 | DMA_HISR_FEIF6 ); // should never happen.
-            }
+                // Clear /half/complete/ flags from last tx..
+                DMA1->HIFCR |= DMA_HISR_TCIF6 | DMA_HISR_HTIF6;
 
-            DMA1_Stream6->NDTR = len;
-            DMA1_Stream6->PAR = (uint32_t)&(uart->DR);
-            DMA1_Stream6->M0AR = (uint32_t)str;
-            DMA1_Stream6->FCR |= DMA_SxFCR_DMDIS;
+                if(DMA1->HISR & (DMA_HISR_TEIF6 | DMA_HISR_DMEIF6 | DMA_HISR_FEIF6 )) { // error on DMA
+    	            DMA1->HIFCR |= (DMA_HISR_TEIF6 | DMA_HISR_DMEIF6 | DMA_HISR_FEIF6 ); // should never happen.
+                }
 
-            DMA1_Stream6->CR = (0x4 << DMA_SxCR_CHSEL_Pos) | DMA_SxCR_MINC | DMA_SxCR_DIR_0 | DMA_SxCR_PL_1 | DMA_SxCR_MSIZE_1;
+			    // copy as much data as possible into dmatxbuffer
+			    unsigned int n = len;
+			    if (n > sizeof(obj->dmatxbuffer))
+			        n = sizeof(obj->dmatxbuffer);
+			    memcpy(obj->dmatxbuffer, str, n);
+			    str += n;
+			    len -= n;
 
-            uart->SR &= ~USART_SR_TC;
+                DMA1_Stream6->NDTR = len;
+                DMA1_Stream6->PAR = (uint32_t)&(uart->DR);
+                DMA1_Stream6->M0AR = (uint32_t)str;
+                DMA1_Stream6->FCR |= DMA_SxFCR_DMDIS;
 
-            DMA1_Stream6->CR |= DMA_SxCR_EN;
-            uart->CR3 |= USART_CR3_DMAT;
-#ifdef POST_TX_WAIT
-            // wait for dma to finish
-            while (!(DMA1->HISR & DMA_HISR_TCIF6))
-                ;
-            DMA1_Stream6->CR &= ~DMA_SxCR_EN;
-            uart->CR3 &= ~USART_CR3_DMAT;
-#endif
+                DMA1_Stream6->CR = (0x4 << DMA_SxCR_CHSEL_Pos) | DMA_SxCR_MINC | DMA_SxCR_DIR_0 | DMA_SxCR_PL_1 | DMA_SxCR_MSIZE_1;
+
+                uart->SR &= ~USART_SR_TC;
+
+                DMA1_Stream6->CR |= DMA_SxCR_EN;
+                uart->CR3 |= USART_CR3_DMAT;
+            } while (len > 0);
 		    break;
 		    
 		default:

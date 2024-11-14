@@ -76,6 +76,7 @@ struct serial_s {
     uint32_t hw_flowcontrol;
     PinName pin_tx;
     PinName pin_rx;
+    char    dmatxbuffer[128];	// buffer for transmitter dma to operate in double buffered mode
 };
 
 struct spi_s {
