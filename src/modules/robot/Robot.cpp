@@ -368,16 +368,16 @@ void Robot::print_position(uint8_t subcode, std::string& res, bool ignore_extrud
     char buf[64];
     if(subcode == 0) { // M114 print WCS
         wcs_t pos= mcs2wcs(machine_position);
-        n = snprintf(buf, sizeof(buf), "C: X:%1.2f Y:%1.2f Z:%1.2f", from_millimeters(std::get<X_AXIS>(pos)), from_millimeters(std::get<Y_AXIS>(pos)), from_millimeters(std::get<Z_AXIS>(pos)));
+        n = snprintf(buf, sizeof(buf), "C:X:%.2fY:%.2fZ:%.2f", from_millimeters(std::get<X_AXIS>(pos)), from_millimeters(std::get<Y_AXIS>(pos)), from_millimeters(std::get<Z_AXIS>(pos)));
 
     } else if(subcode == 4) {
         // M114.4 print last milestone
-        n = snprintf(buf, sizeof(buf), "MP: X:%1.2f Y:%1.2f Z:%1.2f", machine_position[X_AXIS], machine_position[Y_AXIS], machine_position[Z_AXIS]);
+        n = snprintf(buf, sizeof(buf), "MP:X:%.2fY:%.2fZ:%.2f", machine_position[X_AXIS], machine_position[Y_AXIS], machine_position[Z_AXIS]);
 
     } else if(subcode == 5) {
         // M114.5 print last machine position (which should be the same as M114.1 if axis are not moving and no level compensation)
         // will differ from LMS by the compensation at the current position otherwise
-        n = snprintf(buf, sizeof(buf), "CMP: X:%1.2f Y:%1.2f Z:%1.2f", compensated_machine_position[X_AXIS], compensated_machine_position[Y_AXIS], compensated_machine_position[Z_AXIS]);
+        n = snprintf(buf, sizeof(buf), "CMP:X:%.2fY:%.2fZ:%.2f", compensated_machine_position[X_AXIS], compensated_machine_position[Y_AXIS], compensated_machine_position[Z_AXIS]);
 
     } else {
         // get real time positions
@@ -389,10 +389,10 @@ void Robot::print_position(uint8_t subcode, std::string& res, bool ignore_extrud
 
         if(subcode == 1) { // M114.1 print realtime WCS
             wcs_t pos= mcs2wcs(mpos);
-            n = snprintf(buf, sizeof(buf), "WCS: X:%1.2f Y:%1.2f Z:%1.2f", from_millimeters(std::get<X_AXIS>(pos)), from_millimeters(std::get<Y_AXIS>(pos)), from_millimeters(std::get<Z_AXIS>(pos)));
+            n = snprintf(buf, sizeof(buf), "WCS:X:%.2fY:%.2fZ:%.2f", from_millimeters(std::get<X_AXIS>(pos)), from_millimeters(std::get<Y_AXIS>(pos)), from_millimeters(std::get<Z_AXIS>(pos)));
 
         } else if(subcode == 2) { // M114.2 print realtime Machine coordinate system
-            n = snprintf(buf, sizeof(buf), "MCS: X:%1.2f Y:%1.2f Z:%1.2f", mpos[X_AXIS], mpos[Y_AXIS], mpos[Z_AXIS]);
+            n = snprintf(buf, sizeof(buf), "MCS:X:%.2fY:%.2fZ:%.2f", mpos[X_AXIS], mpos[Y_AXIS], mpos[Z_AXIS]);
 
         } else if(subcode == 3) { // M114.3 print realtime actuator position
             // get real time current actuator position in mm
@@ -401,7 +401,7 @@ void Robot::print_position(uint8_t subcode, std::string& res, bool ignore_extrud
                 actuators[Y_AXIS]->get_current_position(),
                 actuators[Z_AXIS]->get_current_position()
             };
-            n = snprintf(buf, sizeof(buf), "APOS: X:%1.2f Y:%1.2f Z:%1.2f", current_position[X_AXIS], current_position[Y_AXIS], current_position[Z_AXIS]);
+            n = snprintf(buf, sizeof(buf), "APOS:X:%.2fY:%.2fZ:%.2f", current_position[X_AXIS], current_position[Y_AXIS], current_position[Z_AXIS]);
         }
     }
 
@@ -414,15 +414,15 @@ void Robot::print_position(uint8_t subcode, std::string& res, bool ignore_extrud
         n= 0;
         if(ignore_extruders && actuators[i]->is_extruder()) continue; // don't show an extruder as that will be E
         if(subcode == 0) { // M114 print last milestone which is the machine position with g92 offset applied for ABC
-            n= snprintf(buf, sizeof(buf), " %c:%1.2f", 'A'+i-A_AXIS, machine_position[i] + g92_offset[i]);
+            n= snprintf(buf, sizeof(buf), "%c:%.1f", 'A'+i-A_AXIS, machine_position[i] + g92_offset[i]);
         }else if(subcode == 4) { // M114.4 print last milestone in machine coordinates
-            n= snprintf(buf, sizeof(buf), " %c:%1.2f", 'A'+i-A_AXIS, machine_position[i]);
+            n= snprintf(buf, sizeof(buf), "%c:%.1f", 'A'+i-A_AXIS, machine_position[i]);
         }else if(subcode == 1) { // M114.1 prints real time position which is the machine position with g92 offset applied for ABC
             // current position 
-            n= snprintf(buf, sizeof(buf), " %c:%1.2f", 'A'+i-A_AXIS,  actuators[i]->get_current_position() + g92_offset[i]);
+            n= snprintf(buf, sizeof(buf), "%c:%.1f", 'A'+i-A_AXIS,  actuators[i]->get_current_position() + g92_offset[i]);
         }else if(subcode == 2 || subcode == 3) { // M114.1/M114.2/M114.3 print actuator position which is the same as machine position for ABC
             // current actuator position
-            n= snprintf(buf, sizeof(buf), " %c:%1.2f", 'A'+i-A_AXIS, actuators[i]->get_current_position());
+            n= snprintf(buf, sizeof(buf), "%c:%.1f", 'A'+i-A_AXIS, actuators[i]->get_current_position());
         }
         if(n > sizeof(buf)) n= sizeof(buf);
         if(n > 0) res.append(buf, n);

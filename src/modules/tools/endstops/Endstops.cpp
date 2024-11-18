@@ -1082,13 +1082,17 @@ void Endstops::on_gcode_received(void *argument)
 
         switch (gcode->m) {
             case 119: {
+                char buf[32];
+                unsigned int n;
                 for(auto& h : homing_axis) {
                     if(h.pin_info == nullptr) continue; // ignore if not a homing endstop
                     string name;
                     name.append(1, h.axis).append(h.home_direction ? "_min" : "_max");
-                    gcode->stream->printf("%s:%d ", name.c_str(), h.pin_info->pin.get());
+                    n = snprintf(buf, sizeof(buf), "%s:%d", name.c_str(), h.pin_info->pin.get());
+                    if(n > sizeof(buf)) n= sizeof(buf);
+                    gcode->txt_after_ok.append(buf, n);
                 }
-                gcode->stream->printf("pins- ");
+                gcode->txt_after_ok.append("pins-");
                 for(auto& p : endstops) {
                     string str(1, p->axis);
                     if(p->limit_enable) str.append("L");
@@ -1113,9 +1117,10 @@ void Endstops::on_gcode_received(void *argument)
                         }
                     }
 
-                    gcode->stream->printf("(%s)P%d.%d:%d ", str.c_str(), p->pin.port_number, p->pin.pin, p->pin.get());
+                    n = snprintf(buf, sizeof(buf), "(%s)P%d.%d:%d", str.c_str(), p->pin.port_number, p->pin.pin, p->pin.get());
+                    if(n > sizeof(buf)) n= sizeof(buf);
+                    gcode->txt_after_ok.append(buf, n);
                 }
-                gcode->add_nl = true;
             }
             break;
 

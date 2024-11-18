@@ -64,7 +64,7 @@ void GcodeDispatch::on_console_line_received(void *line)
     if ( !THEKERNEL->was_normal_power_on_reset() ) {
     	if(!THEKERNEL->is_halted()) {
             string reset_reason = THEKERNEL->get_reset_info();
-            new_message.stream->printf(";Last reset was %s, Halting Kernel! Power cycle or M999 to continue\r\n", THEKERNEL->get_reset_info().c_str() );
+            new_message.stream->printf(";Last reset was %s, Halting Kernel! Power cycle or M999 to continue\n", THEKERNEL->get_reset_info().c_str() );
     		THEKERNEL->call_event(ON_HALT, nullptr);
     	}
         THEKERNEL->clear_reset_reason();
@@ -73,7 +73,7 @@ void GcodeDispatch::on_console_line_received(void *line)
 
     // just reply ok to empty lines
     if(possible_command.empty()) {
-        new_message.stream->printf("ok\r\n");
+        new_message.stream->printf("ok\n");
         return;
     }
 
@@ -103,7 +103,7 @@ try_again:
             if ( full_line.has_m ) {
                 if ( full_line.m == 110 ) {
                     currentline = ln;
-                    new_message.stream->printf("ok\r\n");
+                    new_message.stream->printf("ok\n");
                     return;
                 }
             }
@@ -183,7 +183,7 @@ try_again:
                                 new_message.stream->printf("error:Alarm lock\n");
 
                             }else{
-                                new_message.stream->printf("!!\r\n");
+                                new_message.stream->printf("!!\n");
                             }
                             delete gcode;
                             return;
@@ -199,7 +199,7 @@ try_again:
                                 // TODO it is really an error if the last is not G0 thru G3
                                 if(modal_group_1 > 3) {
                                     delete gcode;
-                                    new_message.stream->printf("ok - Invalid G53\r\n");
+                                    new_message.stream->printf("ok - Invalid G53\n");
                                     return;
                                 }
                                 // use last G0 or G1
@@ -213,7 +213,7 @@ try_again:
                                 if(!gcode->has_g || gcode->g > 1) {
                                     // not G0 or G1 so ignore it as it is invalid
                                     delete gcode;
-                                    new_message.stream->printf("ok - Invalid G53\r\n");
+                                    new_message.stream->printf("ok - Invalid G53\n");
                                     return;
                                 }
                             }
@@ -244,9 +244,9 @@ try_again:
                                 upload_fd = fopen(this->upload_filename.c_str(), "w");
                                 if(upload_fd != NULL) {
                                     this->uploading = true;
-                                    new_message.stream->printf("Writing to file: %s\r\nok\r\n", this->upload_filename.c_str());
+                                    new_message.stream->printf("Writing to file: %s\nok\n", this->upload_filename.c_str());
                                 } else {
-                                    new_message.stream->printf("open failed, File: %s.\r\nok\r\n", this->upload_filename.c_str());
+                                    new_message.stream->printf("open failed, File: %s.\nok\n", this->upload_filename.c_str());
                                 }
 
                                 // only save stuff from this stream
@@ -273,7 +273,7 @@ try_again:
                                 // this is also handled out-of-band (it is now with ^X in the serial driver)
                                 // disables heaters and motors, ignores further incoming Gcode and clears block queue
                                 THEKERNEL->call_event(ON_HALT, nullptr);
-                                THEKERNEL->streams->printf("ok Emergency Stop Requested - reset or M999 required to exit HALT state\r\n");
+                                THEKERNEL->streams->printf("ok Emergency Stop Requested - reset or M999 required to exit HALT state\n");
                                 delete gcode;
                                 return;
 
@@ -291,7 +291,7 @@ try_again:
                                 string str= single_command.substr(4) + possible_command;
                                 PublicData::set_value( panel_checksum, panel_display_message_checksum, &str );
                                 delete gcode;
-                                new_message.stream->printf("ok\r\n");
+                                new_message.stream->printf("ok\n");
                                 return;
                             }
 
@@ -315,7 +315,7 @@ try_again:
                                     }
                                 }
 
-                                new_message.stream->printf("ok\r\n");
+                                new_message.stream->printf("ok\n");
                                 return;
                             }
 
@@ -335,7 +335,7 @@ try_again:
                                 delete gcode->stream;
                                 delete gcode;
                                 __enable_irq();
-                                new_message.stream->printf("Settings Stored to %s\r\nok\r\n", THEKERNEL->config_override_filename());
+                                new_message.stream->printf("Settings Stored to %s\nok\n", THEKERNEL->config_override_filename());
                                 continue;
 
                             case 501: // load config override
@@ -348,13 +348,13 @@ try_again:
                                     SimpleShell::parse_command((gcode->m == 501) ? "load_command" : "save_command", arg, new_message.stream);
                                 }
                                 delete gcode;
-                                new_message.stream->printf("ok\r\n");
+                                new_message.stream->printf("ok\n");
                                 return;
 
                             case 502: // M502 deletes config-override so everything defaults to what is in config
                                 remove(THEKERNEL->config_override_filename());
                                 delete gcode;
-                                new_message.stream->printf("config override file deleted %s, reboot needed\r\nok\r\n", THEKERNEL->config_override_filename());
+                                new_message.stream->printf("config override file deleted %s, reboot needed\nok\n", THEKERNEL->config_override_filename());
                                 continue;
 
                             case 503: { // M503 display live settings and indicates if there is an override file
@@ -386,11 +386,11 @@ try_again:
                         }
 
                         if(!gcode->txt_after_ok.empty()) {
-                            new_message.stream->printf("%s\r\n", gcode->txt_after_ok.c_str());
+                            new_message.stream->printf("%s\n", gcode->txt_after_ok.c_str());
                             gcode->txt_after_ok.clear();
 
                         }else{
-                            new_message.stream->printf("unknown\r\n");
+                            new_message.stream->printf("unknown\n");
                         }
 
                         // we cannot continue safely after an error so we enter HALT state
@@ -400,20 +400,20 @@ try_again:
                     }else if(!sent_ok) {
 
                         if(gcode->add_nl)
-                            new_message.stream->printf("\r\n");
+                            new_message.stream->printf("\n");
 
                         if(!gcode->txt_after_ok.empty()) {
-                            new_message.stream->printf("ok %s\r\n", gcode->txt_after_ok.c_str());
+                            new_message.stream->printf("ok%s\n", gcode->txt_after_ok.c_str());
                             gcode->txt_after_ok.clear();
 
                         } else {
                             if(THEKERNEL->is_ok_per_line() || THEKERNEL->is_grbl_mode()) {
                                 // only send ok once per line if this is a multi g code line send ok on the last one
                                 if(possible_command.empty())
-                                    new_message.stream->printf("ok\r\n");
+                                    new_message.stream->printf("ok\n");
                             } else {
                                 // maybe should do the above for all hosts?
-                                new_message.stream->printf("ok\r\n");
+                                new_message.stream->printf("ok\n");
                             }
                         }
                     }
@@ -429,26 +429,26 @@ try_again:
                         uploading = false;
                         upload_filename.clear();
                         upload_stream= nullptr;
-                        new_message.stream->printf("Done saving file.\r\nok\r\n");
+                        new_message.stream->printf("Done saving file.\nok\n");
                         continue;
                     }
 
                     if(upload_fd == NULL) {
                         // error detected writing to file so discard everything until it stops
-                        new_message.stream->printf("ok\r\n");
+                        new_message.stream->printf("ok\n");
                         continue;
                     }
 
                     single_command.append("\n");
                     if(fwrite(single_command.c_str(), 1, single_command.size(), upload_fd) != single_command.size()) {
                         // error writing to file
-                        new_message.stream->printf("Error:error writing to file.\r\n");
+                        new_message.stream->printf("Error:error writing to file.\n");
                         fclose(upload_fd);
                         upload_fd = NULL;
                         continue;
 
                     } else {
-                         new_message.stream->printf("ok\r\n");
+                         new_message.stream->printf("ok\n");
                         //printf("uploading file write ok\n");
                     }
                 }
@@ -456,7 +456,7 @@ try_again:
 
         } else {
             //Request resend
-            new_message.stream->printf("rs N%d\r\n", nextline);
+            new_message.stream->printf("rs N%d\n", nextline);
         }
 
     } else if ( first_char == ';' || first_char == '(' || first_char == '\n' || first_char == '\r' ) {
