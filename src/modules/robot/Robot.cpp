@@ -758,7 +758,7 @@ void Robot::on_gcode_received(void *argument)
 
                         // this format is deprecated
                         if(gcode->subcode == 0 && (gcode->has_letter('A') || gcode->has_letter('B') || gcode->has_letter('C'))) {
-                            gcode->stream->printf("NOTE this format is deprecated, Use M203.1 instead\n");
+                            gcode->stream->puts("NOTE this format is deprecated, Use M203.1 instead\n");
                             for (size_t i = X_AXIS; i <= Z_AXIS; i++) {
                                 if (gcode->has_letter('A' + i)) {
                                     float v= gcode->get_value('A'+i);
@@ -830,7 +830,7 @@ void Robot::on_gcode_received(void *argument)
                             gcode->stream->printf(",%c axis is not homed", 'X'+i);
                         }
                      }
-                    gcode->stream->printf("\n");
+                    gcode->stream->puts("\n");
                 }
                 break;
 
@@ -856,13 +856,13 @@ void Robot::on_gcode_received(void *argument)
 
             case 500: // M500 saves some volatile settings to config override file
             case 503: { // M503 just prints the settings
-                gcode->stream->printf(";Steps per unit:\nM92 ");
+                gcode->stream->puts(";Steps per unit:\nM92 ");
                 for (int i = 0; i < n_motors; ++i) {
                     if(actuators[i]->is_extruder()) continue; //extruders handle this themselves
                     char axis= (i <= Z_AXIS ? 'X'+i : 'A'+(i-A_AXIS));
                     gcode->stream->printf("%c%1.5f ", axis, actuators[i]->get_steps_per_mm());
                 }
-                gcode->stream->printf("\n");
+                gcode->stream->puts("\n");
 
                 // only print if not NAN
                 gcode->stream->printf(";Acceleration mm/sec^2:\nM204 S%1.5f ", default_acceleration);
@@ -871,7 +871,7 @@ void Robot::on_gcode_received(void *argument)
                     char axis= (i <= Z_AXIS ? 'X'+i : 'A'+(i-A_AXIS));
                     if(!isnan(actuators[i]->get_acceleration())) gcode->stream->printf("%c%1.5f ", axis, actuators[i]->get_acceleration());
                 }
-                gcode->stream->printf("\n");
+                gcode->stream->puts("\n");
 
                 gcode->stream->printf(";X- Junction Deviation, Z- Z junction deviation, S - Minimum Planner speed mm/sec:\nM205 X%1.5f Z%1.5f S%1.5f\n", THEKERNEL->planner->junction_deviation, isnan(THEKERNEL->planner->z_junction_deviation)?-1:THEKERNEL->planner->z_junction_deviation, THEKERNEL->planner->minimum_planner_speed);
 
@@ -883,7 +883,7 @@ void Robot::on_gcode_received(void *argument)
                     char axis= (i <= Z_AXIS ? 'X'+i : 'A'+(i-A_AXIS));
                     gcode->stream->printf("%c%1.5f ", axis, actuators[i]->get_max_rate());
                 }
-                gcode->stream->printf("\n");
+                gcode->stream->puts("\n");
 
                 // get or save any arm solution specific optional values
                 BaseSolution::arm_options_t options;
@@ -892,13 +892,13 @@ void Robot::on_gcode_received(void *argument)
                     for(auto &i : options) {
                         gcode->stream->printf(" %c%1.4f", i.first, i.second);
                     }
-                    gcode->stream->printf("\n");
+                    gcode->stream->puts("\n");
                 }
 
                 // save wcs_offsets and current_wcs
                 // TODO this may need to be done whenever they change to be compliant
                 if(save_g54) {
-                    gcode->stream->printf(";WCS settings\n");
+                    gcode->stream->puts(";WCS settings\n");
                     gcode->stream->printf("%s\n", wcs2gcode(current_wcs).c_str());
                     int n = 1;
                     for(auto &i : wcs_offsets) {
@@ -1225,9 +1225,9 @@ bool Robot::append_milestone(const float target[], float rate_mm_s)
             if( (!isnan(soft_endstop_min[i]) && transformed_target[i] < soft_endstop_min[i]) || (!isnan(soft_endstop_max[i]) && transformed_target[i] > soft_endstop_max[i]) ) {
                 if(soft_endstop_halt) {
                     if(THEKERNEL->is_grbl_mode()) {
-                        THEKERNEL->streams->printf("error:");
+                        THEKERNEL->streams->puts("error:");
                     }else{
-                        THEKERNEL->streams->printf("Error: ");
+                        THEKERNEL->streams->puts("Error: ");
                     }
 
                     THEKERNEL->streams->printf("Soft Endstop %c was exceeded - reset or $X or M999 required\n", i+'X');
@@ -1241,9 +1241,9 @@ bool Robot::append_milestone(const float target[], float rate_mm_s)
                 } else {
                     // ignore it
                     if(THEKERNEL->is_grbl_mode()) {
-                        THEKERNEL->streams->printf("error:");
+                        THEKERNEL->streams->puts("error:");
                     }else{
-                        THEKERNEL->streams->printf("Error: ");
+                        THEKERNEL->streams->puts("Error: ");
                     }
                     THEKERNEL->streams->printf("Soft Endstop %c was exceeded - entire move ignored\n", i+'X');
                     return false;

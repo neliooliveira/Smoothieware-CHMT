@@ -948,7 +948,7 @@ void Endstops::set_homing_offset(Gcode *gcode)
 
     if (gcode->has_letter('X')) {
         if(!homing_axis[X_AXIS].homed) {
-            gcode->stream->printf("error: Axis X must be homed before setting Homing offset\n");
+            gcode->stream->puts("error: Axis X must be homed before setting Homing offset\n");
             return;
         }
         homing_axis[X_AXIS].home_offset += (THEROBOT->to_millimeters(gcode->get_value('X')) - pos[X_AXIS]);
@@ -956,7 +956,7 @@ void Endstops::set_homing_offset(Gcode *gcode)
     }
     if (gcode->has_letter('Y')) {
         if(!homing_axis[Y_AXIS].homed) {
-            gcode->stream->printf("error: Axis Y must be homed before setting Homing offset\n");
+            gcode->stream->puts("error: Axis Y must be homed before setting Homing offset\n");
             return;
         }
         homing_axis[Y_AXIS].home_offset += (THEROBOT->to_millimeters(gcode->get_value('Y')) - pos[Y_AXIS]);
@@ -964,7 +964,7 @@ void Endstops::set_homing_offset(Gcode *gcode)
     }
     if (gcode->has_letter('Z')) {
         if(!homing_axis[Z_AXIS].homed) {
-            gcode->stream->printf("error: Axis Z must be homed before setting Homing offset\n");
+            gcode->stream->puts("error: Axis Z must be homed before setting Homing offset\n");
             return;
         }
         homing_axis[Z_AXIS].home_offset += (THEROBOT->to_millimeters(gcode->get_value('Z')) - pos[Z_AXIS]);
@@ -1073,7 +1073,7 @@ void Endstops::on_gcode_received(void *argument)
 
             default:
                 if(THEKERNEL->is_grbl_mode()) {
-                    gcode->stream->printf("error:Unsupported command\n");
+                    gcode->stream->puts("error:Unsupported command\n");
                 }
                 break;
         }
@@ -1136,7 +1136,7 @@ void Endstops::on_gcode_received(void *argument)
                     gcode->stream->printf("%c: %5.3f ", p.axis, p.home_offset);
                 }
 
-                gcode->stream->printf(" will take effect next home\n");
+                gcode->stream->puts(" will take effect next home\n");
                 break;
 
             case 306: // set homing offset based on current position
@@ -1148,12 +1148,12 @@ void Endstops::on_gcode_received(void *argument)
             case 500: // save settings
             case 503: // print settings
                 if(!is_rdelta) {
-                    gcode->stream->printf(";Home offset (mm):\nM206 ");
+                    gcode->stream->puts(";Home offset (mm):\nM206 ");
                     for (auto &p : homing_axis) {
                         if(p.pin_info == nullptr) continue; // ignore if not a homing endstop
                         gcode->stream->printf("%c%1.2f ", p.axis, p.home_offset);
                     }
-                    gcode->stream->printf("\n");
+                    gcode->stream->puts("\n");
 
                 }else{
                     gcode->stream->printf(";Theta offset (degrees):\nM206 A%1.5f B%1.5f C%1.5f\n",

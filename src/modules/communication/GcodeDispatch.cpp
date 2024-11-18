@@ -73,7 +73,7 @@ void GcodeDispatch::on_console_line_received(void *line)
 
     // just reply ok to empty lines
     if(possible_command.empty()) {
-        new_message.stream->printf("ok\n");
+        new_message.stream->puts("ok\n");
         return;
     }
 
@@ -103,7 +103,7 @@ try_again:
             if ( full_line.has_m ) {
                 if ( full_line.m == 110 ) {
                     currentline = ln;
-                    new_message.stream->printf("ok\n");
+                    new_message.stream->puts("ok\n");
                     return;
                 }
             }
@@ -171,19 +171,19 @@ try_again:
                         if(gcode->has_m && gcode->m == 999) {
                             if(THEKERNEL->is_halted()) {
                                 THEKERNEL->call_event(ON_HALT, (void *)1); // clears on_halt
-                                new_message.stream->printf("WARNING: After HALT you should HOME as position is currently unknown\n");
+                                new_message.stream->puts("WARNING: After HALT you should HOME as position is currently unknown\n");
                             }
-                            new_message.stream->printf("ok\n");
+                            new_message.stream->puts("ok\n");
                             delete gcode;
                             return;
 
                         }else if(!is_allowed_mcode(gcode->m)) {
                             // ignore everything, return error string to host
                             if(THEKERNEL->is_grbl_mode()) {
-                                new_message.stream->printf("error:Alarm lock\n");
+                                new_message.stream->puts("error:Alarm lock\n");
 
                             }else{
-                                new_message.stream->printf("!!\n");
+                                new_message.stream->puts("!!\n");
                             }
                             delete gcode;
                             return;
@@ -199,7 +199,7 @@ try_again:
                                 // TODO it is really an error if the last is not G0 thru G3
                                 if(modal_group_1 > 3) {
                                     delete gcode;
-                                    new_message.stream->printf("ok - Invalid G53\n");
+                                    new_message.stream->puts("ok - Invalid G53\n");
                                     return;
                                 }
                                 // use last G0 or G1
@@ -213,7 +213,7 @@ try_again:
                                 if(!gcode->has_g || gcode->g > 1) {
                                     // not G0 or G1 so ignore it as it is invalid
                                     delete gcode;
-                                    new_message.stream->printf("ok - Invalid G53\n");
+                                    new_message.stream->puts("ok - Invalid G53\n");
                                     return;
                                 }
                             }
@@ -224,7 +224,7 @@ try_again:
                             // optimize G1 to send ok immediately (one per line) before it is planned
                             if(!sent_ok) {
                                 sent_ok= true;
-                                new_message.stream->printf("ok\n");
+                                new_message.stream->puts("ok\n");
                             }
                         }
 
@@ -273,7 +273,7 @@ try_again:
                                 // this is also handled out-of-band (it is now with ^X in the serial driver)
                                 // disables heaters and motors, ignores further incoming Gcode and clears block queue
                                 THEKERNEL->call_event(ON_HALT, nullptr);
-                                THEKERNEL->streams->printf("ok Emergency Stop Requested - reset or M999 required to exit HALT state\n");
+                                THEKERNEL->streams->puts("ok Emergency Stop Requested - reset or M999 required to exit HALT state\n");
                                 delete gcode;
                                 return;
 
@@ -282,7 +282,7 @@ try_again:
 
                                 new_message.stream->printf("FIRMWARE_NAME:Smoothieware, FIRMWARE_URL:http%%3A//smoothieware.org, X-SOURCE_CODE_URL:https%%3A//github.com/janm012012/Smoothieware-CHMT, FIRMWARE_VERSION:%s, X-FIRMWARE_BUILD_DATE:%s, X-SYSTEM_CLOCK:%ldMHz, X-AXES:%d, X-PAXES:%d, X-GRBL_MODE:%d, X-SERIAL_FLOW:%s, X-ASW:1, X-COORDINATE:1", vers.get_build(), vers.get_build_date(), SystemCoreClock / 1000000, MAX_ROBOT_ACTUATORS, N_PRIMARY_AXIS, THEKERNEL->is_grbl_mode(), THEKERNEL->has_serial_rts_cts_handshake()?"RTS/CTS":"NONE");
 
-                                new_message.stream->printf("\nok\n");
+                                new_message.stream->puts("\nok\n");
                                 return;
                             }
 
@@ -291,7 +291,7 @@ try_again:
                                 string str= single_command.substr(4) + possible_command;
                                 PublicData::set_value( panel_checksum, panel_display_message_checksum, &str );
                                 delete gcode;
-                                new_message.stream->printf("ok\n");
+                                new_message.stream->puts("ok\n");
                                 return;
                             }
 
@@ -315,7 +315,7 @@ try_again:
                                     }
                                 }
 
-                                new_message.stream->printf("ok\n");
+                                new_message.stream->puts("ok\n");
                                 return;
                             }
 
@@ -348,7 +348,7 @@ try_again:
                                     SimpleShell::parse_command((gcode->m == 501) ? "load_command" : "save_command", arg, new_message.stream);
                                 }
                                 delete gcode;
-                                new_message.stream->printf("ok\n");
+                                new_message.stream->puts("ok\n");
                                 return;
 
                             case 502: // M502 deletes config-override so everything defaults to what is in config
@@ -364,7 +364,7 @@ try_again:
                                     new_message.stream->printf("; config override present: %s\n",  THEKERNEL->config_override_filename());
 
                                 } else {
-                                    new_message.stream->printf("; No config override\n");
+                                    new_message.stream->puts("; No config override\n");
                                 }
                                 gcode->add_nl= true;
                                 break; // fall through to process by modules
@@ -380,9 +380,9 @@ try_again:
                     if (gcode->is_error) {
                         // report error
                         if(THEKERNEL->is_grbl_mode()) {
-                            new_message.stream->printf("error:");
+                            new_message.stream->puts("error:");
                         }else{
-                            new_message.stream->printf("Error: ");
+                            new_message.stream->puts("Error: ");
                         }
 
                         if(!gcode->txt_after_ok.empty()) {
@@ -390,17 +390,17 @@ try_again:
                             gcode->txt_after_ok.clear();
 
                         }else{
-                            new_message.stream->printf("unknown\n");
+                            new_message.stream->puts("unknown\n");
                         }
 
                         // we cannot continue safely after an error so we enter HALT state
-                        new_message.stream->printf("Entering Alarm/Halt state\n");
+                        new_message.stream->puts("Entering Alarm/Halt state\n");
                         THEKERNEL->call_event(ON_HALT, nullptr);
 
                     }else if(!sent_ok) {
 
                         if(gcode->add_nl)
-                            new_message.stream->printf("\n");
+                            new_message.stream->puts("\n");
 
                         if(!gcode->txt_after_ok.empty()) {
                             new_message.stream->printf("ok%s\n", gcode->txt_after_ok.c_str());
@@ -410,10 +410,10 @@ try_again:
                             if(THEKERNEL->is_ok_per_line() || THEKERNEL->is_grbl_mode()) {
                                 // only send ok once per line if this is a multi g code line send ok on the last one
                                 if(possible_command.empty())
-                                    new_message.stream->printf("ok\n");
+                                    new_message.stream->puts("ok\n");
                             } else {
                                 // maybe should do the above for all hosts?
-                                new_message.stream->printf("ok\n");
+                                new_message.stream->puts("ok\n");
                             }
                         }
                     }
@@ -429,13 +429,13 @@ try_again:
                         uploading = false;
                         upload_filename.clear();
                         upload_stream= nullptr;
-                        new_message.stream->printf("Done saving file.\nok\n");
+                        new_message.stream->puts("Done saving file.\nok\n");
                         continue;
                     }
 
                     if(upload_fd == NULL) {
                         // error detected writing to file so discard everything until it stops
-                        new_message.stream->printf("ok\n");
+                        new_message.stream->puts("ok\n");
                         continue;
                     }
 
@@ -448,7 +448,7 @@ try_again:
                         continue;
 
                     } else {
-                         new_message.stream->printf("ok\n");
+                         new_message.stream->puts("ok\n");
                         //printf("uploading file write ok\n");
                     }
                 }
@@ -461,7 +461,7 @@ try_again:
 
     } else if ( first_char == ';' || first_char == '(' || first_char == '\n' || first_char == '\r' ) {
         // Ignore comments and blank lines
-        new_message.stream->printf("ok\n");
+        new_message.stream->puts("ok\n");
 
     } else if( (n=possible_command.find_first_of("XYZF")) == 0 || (first_char == ' ' && n != string::npos) ) {
         // handle pycam syntax, use last modal group 1 command and resubmit if an X Y Z or F is found on its own line
@@ -473,7 +473,7 @@ try_again:
 
     } else {
         // an uppercase non command word on its own (except XYZF) just returns ok, we could add an error but no hosts expect that.
-        new_message.stream->printf("ok - ignored\n");
+        new_message.stream->puts("ok - ignored\n");
     }
 }
 

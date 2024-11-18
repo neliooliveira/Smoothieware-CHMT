@@ -556,6 +556,9 @@ void serial_send_string( serial_t *obj, const char *str )
 {
     USART_TypeDef *uart = (USART_TypeDef *)(obj->uart);
     int len = strlen(str);
+    unsigned int strInFlash = ((unsigned)str >= FLASH_BASE && (unsigned)str < FLASH_END);	// true if str points into flash memory
+    unsigned int nSend;	// number of bytes to send
+    const char * pSend;	// pointer to data to send, either str or obj->dmxtxbuffer, depending on strInFlash state
     
     switch (obj->uart) {
     	case UART_1:
@@ -575,17 +578,24 @@ void serial_send_string( serial_t *obj, const char *str )
                     DMA2->HIFCR |= (DMA_HISR_TEIF7 | DMA_HISR_DMEIF7 | DMA_HISR_FEIF7 ); // should never happen.
                 }
 
-			    // copy as much data as possible into dmatxbuffer
-			    unsigned int n = len;
-			    if (n > sizeof(obj->dmatxbuffer))
-			        n = sizeof(obj->dmatxbuffer);
-			    memcpy(obj->dmatxbuffer, str, n);
-			    str += n;
-			    len -= n;
+				if (strInFlash) {
+				    // send all data directly
+				    pSend = str;
+				    nSend = len;
+				} else {
+                    // copy as much data as possible into dmatxbuffer
+			        nSend = len;
+			        if (nSend > sizeof(obj->dmatxbuffer))
+			            nSend = sizeof(obj->dmatxbuffer);
+			        memcpy(obj->dmatxbuffer, str, nSend);
+			        pSend = obj->dmatxbuffer;
+			    }
+		        str += nSend;
+		        len -= nSend;
 
-                DMA2_Stream7->NDTR = n;
+                DMA2_Stream7->NDTR = nSend;
                 DMA2_Stream7->PAR = (uint32_t)&(uart->DR);
-                DMA2_Stream7->M0AR = (uint32_t)obj->dmatxbuffer;
+                DMA2_Stream7->M0AR = (uint32_t)pSend;
                 DMA2_Stream7->FCR |= DMA_SxFCR_DMDIS;
 
                 DMA2_Stream7->CR = (0x4 << DMA_SxCR_CHSEL_Pos) | DMA_SxCR_MINC | DMA_SxCR_DIR_0 | DMA_SxCR_PL_1 | DMA_SxCR_MSIZE_1;
