@@ -8,6 +8,7 @@ Precompiled firmware is available in the STM32F407xG folder. To flash the mainbo
 This version has not yet been tested on CHM-T48VB (with RS422). If you have any test results, please report. The last known good commit is [f306fb](https://github.com/janm012012/Smoothieware-CHMT/tree/f306fb6256647447e799c124dffefa7ebee5d7d8).
 
 ## New features:
+* the response to M114 (Position report) has been compressed. This requires an updates POSITION_REPORT_REGEX in OpenPnep like `^okC:X:(?<X>-?\d+\.\d+)Y:(?<Y>-?\d+\.\d+)Z:(?<Z>-?\d+\.\d+)A:(?<A>-?\d+\.\d+)B:(?<B>-?\d+\.\d+)C:(?<C>-?\d+\.\d)D:(?<D>-?\d+\.\d)`. The response to M119 has been compressed as well, which requires a modified ACTUATOR_READ_REGEX of the drag pin actuator like `^okX_min:\dY_min:\dZ_min:\dpins-\(X\)P\d.\d+:\d\(Y\)P\d.\d+:\d\(Z\)P\d.\d+:\d\(Z\)P\d.\d+:(?<Value>\d)`
 * rts_cts_handshake can now have different values: 0: default serial configuration without RTS/CTS, 1: UART2 only with vespamans RTS/CTS configuration detailed below, 2: USART2 only for CHMT-36VA with RTS on TX of second serial connector
 * Serial bitrate up to 4Mbit with or without RTS/CTS (with DMA)
 * Removed machine coordination of actuators in FW, letting OpenPnP deal with them as it should be. Original code always waited for machine to be still before enabling e.g. down led.
