@@ -347,13 +347,12 @@ void Switch::on_gcode_received(void *argument)
 static const char *release_try[MAX_TRIES] = { "G1 X-0.05", "G1 X0.1", "G1 X-0.05 Y-0.05", "G1 Y0.10", "G1 X-0.1 Y-0.05", "G1 X0.2"  };
 
 // execute a sequence of small moves to try to release the drag pin if it did not go up by itself
-void Switch::dragpin_try_release( void *argument )
+void Switch::dragpin_try_release(Gcode* gcode)
 {
     bool timeout = true;
     uint32_t delay_ms = 100; 
     uint32_t start;
     int rt,loops = 0;
-    Gcode *gcode = static_cast<Gcode *>(argument);
     Gcode *gc1;
     
     gc1 = new Gcode("G91", &StreamOutput::NullStream);
@@ -385,6 +384,7 @@ void Switch::dragpin_try_release( void *argument )
         char buf[24];
         int n = snprintf(buf, sizeof(buf), "; ASW: Fail l%d,t%d", loops, rt);
         gcode->txt_after_ok.append(buf, n);
+        gcode->is_error = true;	// put the machine into HALT state
     }
     
     gc1 = new Gcode("G90", &StreamOutput::NullStream);

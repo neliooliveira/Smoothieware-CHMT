@@ -368,7 +368,7 @@ void Robot::print_position(uint8_t subcode, std::string& res, bool ignore_extrud
     char buf[64];
     if(subcode == 0) { // M114 print WCS
         wcs_t pos= mcs2wcs(machine_position);
-        n = snprintf(buf, sizeof(buf), "C:X:%.2fY:%.2fZ:%.2f", from_millimeters(std::get<X_AXIS>(pos)), from_millimeters(std::get<Y_AXIS>(pos)), from_millimeters(std::get<Z_AXIS>(pos)));
+        n = snprintf(buf, sizeof(buf), "X:%.2fY:%.2fZ:%.2f", from_millimeters(std::get<X_AXIS>(pos)), from_millimeters(std::get<Y_AXIS>(pos)), from_millimeters(std::get<Z_AXIS>(pos)));
 
     } else if(subcode == 4) {
         // M114.4 print last milestone
@@ -694,9 +694,7 @@ void Robot::on_gcode_received(void *argument)
                     if(gcode->has_letter(axis)) {
                         actuators[i]->change_steps_per_mm(this->to_millimeters(gcode->get_value(axis)));
                     }
-                    gcode->stream->printf("%c:%f ", axis, actuators[i]->get_steps_per_mm());
                 }
-                gcode->add_nl = true;
                 check_max_actuator_speeds();
                 return;
 
