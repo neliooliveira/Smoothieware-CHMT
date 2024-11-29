@@ -990,6 +990,38 @@ void Endstops::handle_park(Gcode * gcode)
     THEROBOT->pop_state();
 }
 
+// return true if this is the drag pin
+bool Endstops::is_dragpin(Pin *p)
+{
+	return p->pin == 2 && p->port_number == 4;
+}
+
+// wait until the dragpin is up, return true on success
+bool Endstops::wait_for_dragpin_up(Pin *p)
+{
+    // the drag pin is bouncing when commanded to go up. The interlock code in OpenPnP
+    // can be configured to confirm it's up before the next move. To avoid false assertions
+    // allow the pin some time to signal up before returning.
+    // !! here the drag-pin-up sensor is hardcoded
+    if (!is_dragpin(p)) {
+    	return true;
+    }
+
+    bool timeout;
+    uint32_t delay_ms = 100; // After 100ms, we give up
+    uint32_t start = us_ticker_read();
+    
+    while (!p->get()) {
+        THEKERNEL->call_event(ON_IDLE);
+        timeout = (us_ticker_read() - start) > delay_ms * 1000;
+        if (timeout) {
+        	break;
+    	}
+    }
+    
+    return !timeout;
+}
+
 // parse gcodes
 void Endstops::on_gcode_received(void *argument)
 {
@@ -1084,43 +1116,56 @@ void Endstops::on_gcode_received(void *argument)
             case 119: {
                 char buf[32];
                 unsigned int n;
-                for(auto& h : homing_axis) {
-                    if(h.pin_info == nullptr) continue; // ignore if not a homing endstop
-                    string name;
-                    name.append(1, h.axis).append(h.home_direction ? "_min" : "_max");
-                    n = snprintf(buf, sizeof(buf), "%s:%d", name.c_str(), h.pin_info->pin.get());
-                    if(n > sizeof(buf)) n= sizeof(buf);
-                    gcode->txt_after_ok.append(buf, n);
-                }
-                gcode->txt_after_ok.append("pins-");
-                for(auto& p : endstops) {
-                    string str(1, p->axis);
-                    if(p->limit_enable) str.append("L");
+                switch(gcode->subcode) {
+                    case 0: // M119: default
+		                for(auto& h : homing_axis) {
+		                    if(h.pin_info == nullptr) continue; // ignore if not a homing endstop
+		                    string name;
+		                    name.append(1, h.axis).append(h.home_direction ? "_min" : "_max");
+		                    n = snprintf(buf, sizeof(buf), "%s:%d", name.c_str(), h.pin_info->pin.get());
+		                    if(n > sizeof(buf)) n= sizeof(buf);
+		                    gcode->txt_after_ok.append(buf, n);
+		                }
+		                gcode->txt_after_ok.append("pins-");
+		                for(auto& p : endstops) {
+		                    string str(1, p->axis);
+		                    if(p->limit_enable) str.append("L");
 
-                    // the drag pin is bouncing when commanded to go up. The interlock code in OpenPnP
-                    // can be configured to confirm it's up before the next move. To avoid false assertions
-                    // allow the pin some time to signal up before returning.
-                    // !! here the drag-pin-up sensor is hardcoded
-                    if (p->pin.pin == 2 && p->pin.port_number == 4) {
-                        bool timeout;
-                        uint32_t delay_ms = 100; // After 100ms, we give up
-                        uint32_t start = us_ticker_read();
-                        int pin_state;
-                        
-                        pin_state = p->pin.get();
-                        if (!pin_state) {
-                            do {
-                                THEKERNEL->call_event(ON_IDLE);
-                                timeout = (us_ticker_read() - start) > delay_ms * 1000;
-                                pin_state = p->pin.get();
-                            } while (!pin_state && !timeout);
-                        }
-                    }
-
-                    n = snprintf(buf, sizeof(buf), "(%s)P%d.%d:%d", str.c_str(), p->pin.port_number, p->pin.pin, p->pin.get());
-                    if(n > sizeof(buf)) n= sizeof(buf);
-                    gcode->txt_after_ok.append(buf, n);
-                }
+							if (is_dragpin(&p->pin)) {
+								wait_for_dragpin_up(&p->pin);
+							}
+		
+		                    n = snprintf(buf, sizeof(buf), "(%s)P%d.%d:%d", str.c_str(), p->pin.port_number, p->pin.pin, p->pin.get());
+		                    if(n > sizeof(buf)) n= sizeof(buf);
+		                    gcode->txt_after_ok.append(buf, n);
+		                }
+		                break;
+		                
+	                case 1: // M119.1: special version to just return the drag pin up signal
+		                for(auto& p : endstops) {
+		                	// find the drag pin up endstop
+		                	if (!is_dragpin(&p->pin)) {
+    							continue;
+							}
+    							
+    						// found the dragpin
+							wait_for_dragpin_up(&p->pin);
+		
+		                    n = snprintf(buf, sizeof(buf), "%d", p->pin.get());
+		                    if(n > sizeof(buf)) n= sizeof(buf);
+		                    gcode->txt_after_ok.append(buf, n);
+		                    
+		                    // leave the for() loop now
+		                    break;
+		                }
+	                	break;
+	                	
+		            default:
+		                if(THEKERNEL->is_grbl_mode()) {
+		                    gcode->stream->puts("error:Unsupported command\n");
+		                }
+		                break;
+		        }
             }
             break;
 
