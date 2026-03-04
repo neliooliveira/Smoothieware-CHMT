@@ -58,6 +58,7 @@ extern unsigned int g_maximumHeapAddress;
 extern "C" uint32_t  __end__;
 extern "C" uint32_t  __malloc_free_list;
 extern "C" uint32_t  _sbrk(int size);
+extern "C" uint32_t  Set_GPIO_Clock(uint32_t port_idx);
 
 
 // command lookup table
@@ -88,6 +89,7 @@ const SimpleShell::ptentry_t SimpleShell::commands_table[] = {
     {"thermistors", SimpleShell::print_thermistors_command},
     {"md5sum",   SimpleShell::md5sum_command},
     {"test",     SimpleShell::test_command},
+    {"pinsniff", SimpleShell::pinsniff_command},
 
     // unknown command
     {NULL, NULL}
@@ -1202,5 +1204,234 @@ void SimpleShell::help_command( string parameters, StreamOutput *stream )
     stream->printf("calc_thermistor [-s0] T1,R1,T2,R2,T3,R3 - calculate the Steinhart Hart coefficients for a thermistor\r\n");
     stream->printf("thermistors - print out the predefined thermistors\r\n");
     stream->printf("md5sum file - prints md5 sum of the given file\r\n");
+    stream->printf("pinsniff [seconds] [pullup] - scan GPIO pins for encoder signals\r\n");
+}
+
+// Pin sniffer: monitors all GPIO pins for transitions to find encoder signals
+// Usage: pinsniff [duration_seconds] [pullup]
+//   duration_seconds: how long to scan (default 5)
+//   pullup: if specified, configures unassigned pins with pull-ups before scanning
+void SimpleShell::pinsniff_command( string parameters, StreamOutput *stream)
+{
+    static GPIO_TypeDef* const gpios[] = {GPIOA, GPIOB, GPIOC, GPIOD, GPIOE, GPIOF, GPIOG, GPIOH, GPIOI};
+    static const char port_names[] = "ABCDEFGHI";
+    static const int NUM_PORTS = 9;
+
+    // Parse parameters
+    string param = shift_parameter(parameters);
+    uint32_t duration_secs = 5;
+    bool do_pullup = false;
+
+    if (!param.empty()) {
+        if (param == "pullup") {
+            do_pullup = true;
+        } else {
+            duration_secs = strtol(param.c_str(), NULL, 10);
+            if (duration_secs == 0 || duration_secs > 60) duration_secs = 5;
+            param = shift_parameter(parameters);
+            if (param == "pullup") do_pullup = true;
+        }
+    }
+
+    // Known assigned pins - bitmask per port (1 = assigned, skip reconfiguring)
+    // Port A: PA_2(TX), PA_3(RX/kill), PA_5(ADC), PA_6(ADC), PA_13(SWDIO), PA_14(SWCLK)
+    uint16_t assigned[NUM_PORTS] = {0};
+    assigned[0] = (1<<2)|(1<<3)|(1<<5)|(1<<6)|(1<<13)|(1<<14);  // Port A
+    // Port B: none assigned in config
+    assigned[1] = 0;
+    // Port C: PC_13(Z min endstop)
+    assigned[2] = (1<<13);
+    // Port D: PD_2(Zmax), PD_3(Ymin), PD_4(Xmin), PD_5(vac), PD_6(blow), PD_7(en), PD_11(oten), PD_14(drag)
+    assigned[3] = (1<<2)|(1<<3)|(1<<4)|(1<<5)|(1<<6)|(1<<7)|(1<<11)|(1<<14);
+    // Port E: all stepper pins PE_0..PE_15 (many assigned), PE_12(LED)
+    assigned[4] = (1<<0)|(1<<1)|(1<<2)|(1<<3)|(1<<4)|(1<<5)|(1<<6)|(1<<7)|(1<<8)|(1<<9)|(1<<10)|(1<<12)|(1<<13)|(1<<14)|(1<<15);
+    // Port F: PF_0(en), PF_1(en), PF_2(vac), PF_3(vac), PF_4(led), PF_5(led), PF_10(cam)
+    assigned[5] = (1<<0)|(1<<1)|(1<<2)|(1<<3)|(1<<4)|(1<<5)|(1<<10);
+    // Port G: none assigned
+    assigned[6] = 0;
+    // Port H: PH_0, PH_1 are HSE crystal - NEVER TOUCH
+    assigned[7] = (1<<0)|(1<<1);
+    // Port I: none assigned
+    assigned[8] = 0;
+
+    // Enable GPIO clocks for all ports
+    for (int p = 0; p < NUM_PORTS; p++) {
+        Set_GPIO_Clock(p);
+    }
+
+    // Save original MODER values so we can restore later
+    uint32_t orig_moder[NUM_PORTS];
+    uint32_t orig_pupdr[NUM_PORTS];
+    for (int p = 0; p < NUM_PORTS; p++) {
+        orig_moder[p] = gpios[p]->MODER;
+        orig_pupdr[p] = gpios[p]->PUPDR;
+    }
+
+    // Optionally configure unassigned pins as inputs with pull-up
+    if (do_pullup) {
+        stream->printf("Configuring unassigned pins as inputs with pull-up...\n");
+        for (int p = 0; p < NUM_PORTS; p++) {
+            for (int pin = 0; pin < 16; pin++) {
+                if (assigned[p] & (1 << pin)) continue;  // skip assigned pins
+
+                // Check if pin is already configured as AF or analog (MODER bits != 00)
+                uint32_t mode = (orig_moder[p] >> (2*pin)) & 0x3;
+                if (mode == 0x2 || mode == 0x3) continue;  // AF or Analog - don't touch
+
+                // Set as input (MODER = 00)
+                gpios[p]->MODER &= ~(0x3 << (2*pin));
+                // Set pull-up (PUPDR = 01)
+                gpios[p]->PUPDR = (gpios[p]->PUPDR & ~(0x3 << (2*pin))) | (0x1 << (2*pin));
+            }
+        }
+    }
+
+    // Toggle count array: [port][pin]
+    uint32_t toggle_count[NUM_PORTS][16];
+    memset(toggle_count, 0, sizeof(toggle_count));
+
+    // Read initial state of all ports
+    uint16_t prev_idr[NUM_PORTS];
+    for (int p = 0; p < NUM_PORTS; p++) {
+        prev_idr[p] = gpios[p]->IDR;
+    }
+
+    stream->printf("Pin Sniffer active for %lu seconds - move motors by hand now!\n", duration_secs);
+    stream->printf("Scanning ports A through I (all 144 GPIOs)...\n");
+
+    // Scan loop - poll as fast as possible, yield periodically
+    uint32_t total_samples = 0;
+    uint32_t duration_ms = duration_secs * 1000;
+    uint32_t start_ms = us_ticker_read() / 1000;
+    uint32_t last_yield_ms = start_ms;
+
+    while (true) {
+        uint32_t now_ms = us_ticker_read() / 1000;
+        if (now_ms - start_ms >= duration_ms) break;
+
+        // Read all ports and detect changes
+        for (int p = 0; p < NUM_PORTS; p++) {
+            uint16_t idr = gpios[p]->IDR;
+            uint16_t changed = idr ^ prev_idr[p];
+            if (changed) {
+                for (int pin = 0; pin < 16; pin++) {
+                    if (changed & (1 << pin)) {
+                        toggle_count[p][pin]++;
+                    }
+                }
+                prev_idr[p] = idr;
+            }
+        }
+        total_samples++;
+
+        // Yield to system every 10ms to keep watchdog happy and allow serial I/O
+        if (now_ms - last_yield_ms >= 10) {
+            THEKERNEL->call_event(ON_IDLE);
+            last_yield_ms = now_ms;
+            if (THEKERNEL->is_halted()) break;
+        }
+    }
+
+    // Restore original pin configuration if we changed it
+    if (do_pullup) {
+        for (int p = 0; p < NUM_PORTS; p++) {
+            gpios[p]->MODER = orig_moder[p];
+            gpios[p]->PUPDR = orig_pupdr[p];
+        }
+    }
+
+    // Report results
+    stream->printf("\n--- Pin Sniffer Results ---\n");
+    stream->printf("Scanned for %lu seconds, %lu sample loops\n\n", duration_secs, total_samples);
+
+    // Timer channel info for encoder-capable pins
+    // Format: Port.Pin  Mode  Toggles  Current  Timer
+    stream->printf("%-10s %-8s %8s %7s  %s\n", "Pin", "Mode", "Toggles", "Current", "Timer/Notes");
+    stream->printf("%-10s %-8s %8s %7s  %s\n", "---", "----", "-------", "-------", "-----------");
+
+    bool found_any = false;
+    for (int p = 0; p < NUM_PORTS; p++) {
+        for (int pin = 0; pin < 16; pin++) {
+            if (toggle_count[p][pin] == 0) continue;
+            found_any = true;
+
+            // Get pin mode
+            uint32_t mode = (gpios[p]->MODER >> (2*pin)) & 0x3;
+            const char* mode_str;
+            switch(mode) {
+                case 0: mode_str = "INPUT"; break;
+                case 1: mode_str = "OUTPUT"; break;
+                case 2: mode_str = "AF"; break;
+                case 3: mode_str = "ANALOG"; break;
+                default: mode_str = "?"; break;
+            }
+
+            // Current level
+            const char* level = (gpios[p]->IDR & (1 << pin)) ? "HIGH" : "LOW";
+
+            // Is this an assigned pin?
+            bool is_assigned = (assigned[p] & (1 << pin)) != 0;
+
+            // Timer capability annotation
+            const char* timer_info = "";
+            // Port A timer pins
+            if (p == 0 && pin == 0)  timer_info = "TIM2_CH1/TIM5_CH1";
+            if (p == 0 && pin == 1)  timer_info = "TIM2_CH2/TIM5_CH2";
+            if (p == 0 && pin == 2)  timer_info = "TIM2_CH3/TIM9_CH1 *UART*";
+            if (p == 0 && pin == 3)  timer_info = "TIM2_CH4/TIM9_CH2 *UART*";
+            if (p == 0 && pin == 6)  timer_info = "TIM3_CH1 *ADC*";
+            if (p == 0 && pin == 7)  timer_info = "TIM3_CH2";
+            if (p == 0 && pin == 8)  timer_info = "TIM1_CH1";
+            if (p == 0 && pin == 9)  timer_info = "TIM1_CH2";
+            if (p == 0 && pin == 15) timer_info = "TIM2_CH1";
+            // Port B timer pins
+            if (p == 1 && pin == 0)  timer_info = "TIM3_CH3";
+            if (p == 1 && pin == 1)  timer_info = "TIM3_CH4";
+            if (p == 1 && pin == 4)  timer_info = "TIM3_CH1";
+            if (p == 1 && pin == 5)  timer_info = "TIM3_CH2";
+            if (p == 1 && pin == 6)  timer_info = "TIM4_CH1";
+            if (p == 1 && pin == 7)  timer_info = "TIM4_CH2";
+            if (p == 1 && pin == 8)  timer_info = "TIM4_CH3";
+            if (p == 1 && pin == 9)  timer_info = "TIM4_CH4";
+            if (p == 1 && pin == 10) timer_info = "TIM2_CH3";
+            if (p == 1 && pin == 11) timer_info = "TIM2_CH4";
+            if (p == 1 && pin == 14) timer_info = "TIM12_CH1";
+            if (p == 1 && pin == 15) timer_info = "TIM12_CH2";
+            // Port C timer pins
+            if (p == 2 && pin == 6)  timer_info = "TIM8_CH1/TIM3_CH1";
+            if (p == 2 && pin == 7)  timer_info = "TIM8_CH2/TIM3_CH2";
+            if (p == 2 && pin == 8)  timer_info = "TIM8_CH3";
+            if (p == 2 && pin == 9)  timer_info = "TIM8_CH4";
+            // Port D timer pins
+            if (p == 3 && pin == 12) timer_info = "TIM4_CH1";
+            if (p == 3 && pin == 13) timer_info = "TIM4_CH2";
+            // Port E timer pins
+            if (p == 4 && pin == 5)  timer_info = "TIM9_CH1 *STEP*";
+            if (p == 4 && pin == 6)  timer_info = "TIM9_CH2 *STEP*";
+            if (p == 4 && pin == 9)  timer_info = "TIM1_CH1 *STEP*";
+            if (p == 4 && pin == 11) timer_info = "TIM1_CH2";
+            if (p == 4 && pin == 13) timer_info = "TIM1_CH3 *STEP*";
+            if (p == 4 && pin == 14) timer_info = "TIM1_CH4 *STEP*";
+            // Port I timer pins
+            if (p == 8 && pin == 5)  timer_info = "TIM8_CH1";
+            if (p == 8 && pin == 6)  timer_info = "TIM8_CH2";
+            if (p == 8 && pin == 7)  timer_info = "TIM8_CH3";
+
+            stream->printf("P%c_%-7d %-8s %8lu %7s  %s%s\n",
+                port_names[p], pin, mode_str,
+                toggle_count[p][pin], level, timer_info,
+                is_assigned ? " [ASSIGNED]" : "");
+        }
+    }
+
+    if (!found_any) {
+        stream->printf("No pin transitions detected.\n");
+        stream->printf("Tips: Make sure motors are not powered (drivers disabled),\n");
+        stream->printf("      then try 'pinsniff 10 pullup' to enable pull-ups.\n");
+    } else {
+        stream->printf("\nLook for pairs of pins with similar high toggle counts.\n");
+        stream->printf("Encoder A/B signals will toggle together when a motor shaft is rotated.\n");
+        stream->printf("Timer-capable pin pairs (e.g. TIM4_CH1/CH2) can use HW encoder mode.\n");
+    }
 }
 
