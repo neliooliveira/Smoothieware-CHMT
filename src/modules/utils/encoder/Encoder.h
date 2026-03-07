@@ -21,6 +21,7 @@ class Encoder : public Module {
         void init_encoders();
         void report_encoder_position(StreamOutput *stream);
         void report_stepper_position(StreamOutput *stream);
+        void auto_calibrate(StreamOutput *stream, float distance);
 
         float x_counts_per_mm;
         float y_counts_per_mm;

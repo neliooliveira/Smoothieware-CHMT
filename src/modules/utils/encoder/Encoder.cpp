@@ -13,9 +13,11 @@
 
 #include "stm32f4xx_hal.h"
 
-#define encoder_enable_checksum        CHECKSUM("encoder_enable")
+#define encoder_enable_checksum          CHECKSUM("encoder_enable")
 #define encoder_x_counts_per_mm_checksum CHECKSUM("encoder_x_counts_per_mm")
 #define encoder_y_counts_per_mm_checksum CHECKSUM("encoder_y_counts_per_mm")
+#define alpha_max_travel_checksum        CHECKSUM("alpha_max_travel")
+#define beta_max_travel_checksum         CHECKSUM("beta_max_travel")
 
 static TIM_HandleTypeDef htim2;
 static TIM_HandleTypeDef htim5;
@@ -176,6 +178,59 @@ void Encoder::on_gcode_received(void *argument)
                 if (gcode->has_letter('Y')) y_counts_per_mm = gcode->get_value('Y');
                 gcode->stream->printf("ok X:%.4f Y:%.4f\n", x_counts_per_mm, y_counts_per_mm);
                 break;
+
+            case 924: { // auto-calibrate encoder counts per mm
+                if (!THEKERNEL->conveyor->is_idle()) {
+                    gcode->stream->printf("error: machine is moving\n");
+                    break;
+                }
+                float cal_distance = 0;
+                if (gcode->has_letter('D')) {
+                    cal_distance = gcode->get_value('D');
+                } else {
+                    float x_travel = THEKERNEL->config->value(alpha_max_travel_checksum)->by_default(500)->as_number();
+                    float y_travel = THEKERNEL->config->value(beta_max_travel_checksum)->by_default(500)->as_number();
+                    cal_distance = (x_travel < y_travel ? x_travel : y_travel) / 2.0f;
+                }
+                auto_calibrate(gcode->stream, cal_distance);
+                break;
+            }
         }
     }
+}
+
+void Encoder::auto_calibrate(StreamOutput *stream, float distance)
+{
+    // Zero encoder counts at current (home) position
+    set_x_count(0);
+    set_y_count(0);
+
+    float cal_speed = 10.0f; // mm/s — slow for accuracy, minimizes lost steps
+
+    THEROBOT->push_state();
+
+    // Move toward origin (negative direction from home at back-right)
+    float delta[3] = {-distance, -distance, 0};
+    THEROBOT->delta_move(delta, cal_speed, 3);
+    THECONVEYOR->wait_for_idle();
+
+    // Capture encoder counts after calibration move
+    int32_t ex = get_x_count();
+    int32_t ey = get_y_count();
+
+    // Move back to starting position
+    float delta_back[3] = {distance, distance, 0};
+    THEROBOT->delta_move(delta_back, cal_speed, 3);
+    THECONVEYOR->wait_for_idle();
+
+    THEROBOT->pop_state();
+
+    // Calculate counts per mm from absolute encoder counts
+    int32_t abs_ex = ex < 0 ? -ex : ex;
+    int32_t abs_ey = ey < 0 ? -ey : ey;
+    x_counts_per_mm = (float)abs_ex / distance;
+    y_counts_per_mm = (float)abs_ey / distance;
+
+    // Report raw counts (sign indicates encoder direction) and calibrated values
+    stream->printf("ok EX:%ld EY:%ld X:%.4f Y:%.4f\n", ex, ey, x_counts_per_mm, y_counts_per_mm);
 }
