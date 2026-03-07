@@ -205,7 +205,7 @@ endif
 
 # Compiler Options
 GCFLAGS += -O$(OPTIMIZATION) -g3 $(DEVICE_CFLAGS)
-GCFLAGS += -ffunction-sections -fdata-sections  -fno-exceptions -fno-delete-null-pointer-checks
+GCFLAGS += -ffunction-sections -fdata-sections  -fno-exceptions -fno-delete-null-pointer-checks -include stdint.h -include stddef.h
 GCFLAGS += $(patsubst %,-I%,$(INCDIRS))
 GCFLAGS += $(DEFINES)
 GCFLAGS += $(DEPFLAGS)
@@ -215,7 +215,7 @@ GPFLAGS += $(GCFLAGS) -fno-rtti -std=gnu++11
 
 AS_GCFLAGS += -g3 $(DEVICE_FLAGS) -x assembler-with-cpp
 AS_GCFLAGS += $(patsubst %,-I%,$(INCDIRS))
-AS_FLAGS += -g3 $(DEVICE_FLAGS)
+AS_FLAGS += -g $(DEVICE_FLAGS)
 
 
 # Linker Options.
