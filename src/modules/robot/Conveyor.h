@@ -53,6 +53,11 @@ private:
         volatile bool running:1;
         volatile bool allow_fetch:1;
         bool flush:1;
+        volatile bool held:1;
     };
+
+public:
+    void hold_queue() { held = true; allow_fetch = false; }
+    void release_queue() { held = false; }
 
 };

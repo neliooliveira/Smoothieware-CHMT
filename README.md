@@ -178,6 +178,14 @@ When both `encoder_x_counts_per_mm` and `encoder_y_counts_per_mm` are non-zero, 
 
 When encoder-driven position control is active, each armed move has a timeout: 2 seconds plus 2 seconds per mm of travel distance. If the encoder does not reach the target within this window, the firmware stops the motor and enters HALT. This catches mechanical jams, encoder failures, and stalls without requiring additional hardware. The machine can be recovered with `M999`.
 
+#### Segment Buffering (M920)
+
+For S-curve motion with OpenPnP's `Simulated3rdOrderControl`, a single point-to-point move is broken into ~32 small constant-acceleration segments. Without buffering, the tiny jerk-phase segments execute faster than serial can deliver the next one, causing motion starvation.
+
+`M920 S32` tells the firmware to hold the next 32 G0/G1 moves in the Conveyor queue before executing any of them. Each G0/G1 is processed normally by the planner (creating a Block with its own acceleration profile) and its encoder target is stored in a segment buffer. After all segments arrive, the queue is released and execution begins. The OC ISR chains through segments: when both axes reach their targets for segment N, the ISR stops the motors (triggering a block transition in StepTicker, which loads the next Block's speed profile) and arms segment N+1's encoder targets. The last segment stops the motors and exits segment mode.
+
+Machines that do not support M920 simply ignore it, and the G0 commands execute normally.
+
 #### Encoder M-codes
 
 | Code | Parameters | Description |
@@ -187,6 +195,7 @@ When encoder-driven position control is active, each armed move has a timeout: 2
 | `M921` | | Report stepper step counts. Response: `ok SX:<count> SY:<count>` |
 | `M922` | `Xnnn Ynnn` | Set stepper step counts. Returns error if machine is moving. |
 | `M923` | `Xnnn Ynnn` | Set encoder counts per mm (signed: sign captures encoder polarity). Reports current values if called without parameters. |
+| `M920` | `Snnn` | Buffer the next S motion segments before executing. Holds the Conveyor queue until all segments arrive, then releases for chained execution with encoder OC targets. Max 128 segments. |
 | `M924` | `Dnnn` | Auto-calibrate encoder counts per mm. Default distance: `min(alpha_max_travel, beta_max_travel) / 2`. Optional `D` parameter overrides calibration distance. Must be homed first. |
 
 #### Encoder Calibration
