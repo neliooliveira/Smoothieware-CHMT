@@ -2,7 +2,7 @@
 
 Smoothieware firmware for the Charmhigh CHM-T36VA, CHM-T48VB, and equivalent pick-and-place machines. Runs on the stock STM32F407 control board.
 
-Originally ported to STM32 by [mattthebaker](https://github.com/mattthebaker/Smoothieware-CHMT), then extended for OpenPnP by [c-riegel](https://github.com/c-riegel/Smoothieware-CHMT) (advanced motion, feed rate tuning, 7-axis peeler support), and further developed by [janm012012](https://github.com/janm012012/Smoothieware-CHMT) (DMA serial, drag pin PWM, smart sensing, camera lighting). Encoder feedback is being added by c-riegel.
+Originally ported to STM32 by [mattthebaker](https://github.com/mattthebaker/Smoothieware-CHMT), then extended for OpenPnP by [c-riegel](https://github.com/c-riegel/Smoothieware-CHMT) based on design input from [markmaker](https://github.com/markmaker) (advanced motion, feed rate tuning, 7-axis peeler support), and further developed by [janm012012](https://github.com/janm012012/Smoothieware-CHMT) (DMA serial, drag pin PWM, smart sensing, camera lighting). Encoder feedback is being added by c-riegel.
 
 Precompiled firmware is available in the `STM32F407xG` folder. To flash the mainboard, a full chip erase is required. While flashing, the vacuum pump and blower may run at full power due to the MCU outputs being in an undefined state. No official schematics are available for these machines, and this firmware is provided as-is with no warranty. **Flash at your own risk. Always back up your existing firmware before flashing.**
 
