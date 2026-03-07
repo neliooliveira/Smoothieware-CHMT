@@ -22,11 +22,37 @@
 static TIM_HandleTypeDef htim2;
 static TIM_HandleTypeDef htim5;
 
+// Stepper motor pointers for ISR access
+static StepperMotor *x_stepper = nullptr;
+static StepperMotor *y_stepper = nullptr;
+
+// Output Compare ISR for X axis (TIM2 CC3)
+extern "C" void TIM2_IRQHandler(void)
+{
+    if (TIM2->SR & TIM_SR_CC3IF) {
+        TIM2->SR = ~TIM_SR_CC3IF;
+        TIM2->DIER &= ~TIM_DIER_CC3IE;
+        if (x_stepper) x_stepper->stop_moving();
+    }
+}
+
+// Output Compare ISR for Y axis (TIM5 CC3)
+extern "C" void TIM5_IRQHandler(void)
+{
+    if (TIM5->SR & TIM_SR_CC3IF) {
+        TIM5->SR = ~TIM_SR_CC3IF;
+        TIM5->DIER &= ~TIM_DIER_CC3IE;
+        if (y_stepper) y_stepper->stop_moving();
+    }
+}
+
 Encoder::Encoder()
 {
     encoder_enabled = false;
     x_counts_per_mm = 0;
     y_counts_per_mm = 0;
+    x_encoder_offset = 0;
+    y_encoder_offset = 0;
 }
 
 void Encoder::on_module_loaded()
@@ -40,7 +66,12 @@ void Encoder::on_module_loaded()
     x_counts_per_mm = THEKERNEL->config->value(encoder_x_counts_per_mm_checksum)->by_default(0)->as_number();
     y_counts_per_mm = THEKERNEL->config->value(encoder_y_counts_per_mm_checksum)->by_default(0)->as_number();
 
+    // Store the stepper motor pointers for ISR access
+    x_stepper = THEROBOT->actuators[X_AXIS];
+    y_stepper = THEROBOT->actuators[Y_AXIS];
+
     init_encoders();
+    init_output_compare();
 
     this->register_for_event(ON_GCODE_RECEIVED);
 }
@@ -109,6 +140,45 @@ void Encoder::init_encoders()
     HAL_TIM_Encoder_Start(&htim5, TIM_CHANNEL_ALL);
 }
 
+void Encoder::init_output_compare()
+{
+    // Configure CC3 for output compare on TIM2 (X axis)
+    // CC3 is free — CC1/CC2 are used by the encoder interface
+    TIM2->CCMR2 &= ~TIM_CCMR2_CC3S;  // CC3 as output
+    TIM2->CCMR2 &= ~TIM_CCMR2_OC3M;  // frozen mode (no pin output, just interrupt)
+    TIM2->SR = ~TIM_SR_CC3IF;          // clear any pending CC3 flag
+    // CC3 interrupt is NOT enabled here — armed per-move by arm_x_target()
+
+    NVIC_SetVector(TIM2_IRQn, (uint32_t)TIM2_IRQHandler);
+    NVIC_SetPriority(TIM2_IRQn, 2); // higher priority than step ticker
+    NVIC_EnableIRQ(TIM2_IRQn);
+
+    // Configure CC3 for output compare on TIM5 (Y axis)
+    TIM5->CCMR2 &= ~TIM_CCMR2_CC3S;
+    TIM5->CCMR2 &= ~TIM_CCMR2_OC3M;
+    TIM5->SR = ~TIM_SR_CC3IF;
+
+    NVIC_SetVector(TIM5_IRQn, (uint32_t)TIM5_IRQHandler);
+    NVIC_SetPriority(TIM5_IRQn, 2);
+    NVIC_EnableIRQ(TIM5_IRQn);
+}
+
+void Encoder::arm_x_target(int32_t target)
+{
+    TIM2->CCR3 = (uint32_t)target;
+    TIM2->SR = ~TIM_SR_CC3IF;     // clear any stale flag
+    TIM2->DIER |= TIM_DIER_CC3IE; // enable CC3 interrupt
+    x_stepper->set_encoder_controlled(true);
+}
+
+void Encoder::arm_y_target(int32_t target)
+{
+    TIM5->CCR3 = (uint32_t)target;
+    TIM5->SR = ~TIM_SR_CC3IF;
+    TIM5->DIER |= TIM_DIER_CC3IE;
+    y_stepper->set_encoder_controlled(true);
+}
+
 int32_t Encoder::get_x_count()
 {
     return (int32_t)TIM2->CNT;
@@ -145,17 +215,52 @@ void Encoder::on_gcode_received(void *argument)
 {
     Gcode *gcode = static_cast<Gcode *>(argument);
 
+    if (gcode->has_g && (gcode->g == 0 || gcode->g == 1)) {
+        // Encoder-driven position control: arm Output Compare targets
+        // Only active when both axes are calibrated (counts_per_mm != 0)
+        if (x_counts_per_mm != 0 && y_counts_per_mm != 0) {
+            // Robot has already processed this G-code and updated machine_position
+            // to the target. Compute encoder targets from machine position.
+            if (gcode->has_letter('X')) {
+                int32_t target = (int32_t)((THEROBOT->get_axis_position(X_AXIS) - x_encoder_offset) * x_counts_per_mm);
+                arm_x_target(target);
+            }
+            if (gcode->has_letter('Y')) {
+                int32_t target = (int32_t)((THEROBOT->get_axis_position(Y_AXIS) - y_encoder_offset) * y_counts_per_mm);
+                arm_y_target(target);
+            }
+        }
+        return;
+    }
+
     if (gcode->has_m) {
         switch (gcode->m) {
             case 918: // report encoder positions
                 report_encoder_position(gcode->stream);
                 break;
 
-            case 919: // set encoder counters
-                if (gcode->has_letter('X')) set_x_count((int32_t)gcode->get_value('X'));
-                if (gcode->has_letter('Y')) set_y_count((int32_t)gcode->get_value('Y'));
+            case 919: { // set encoder counters
+                // Record the machine position at which the encoder is being set
+                // This establishes the reference for encoder-to-position mapping
+                if (gcode->has_letter('X')) {
+                    int32_t val = (int32_t)gcode->get_value('X');
+                    set_x_count(val);
+                    if (x_counts_per_mm != 0)
+                        x_encoder_offset = THEROBOT->get_axis_position(X_AXIS) - (float)val / x_counts_per_mm;
+                    else
+                        x_encoder_offset = THEROBOT->get_axis_position(X_AXIS);
+                }
+                if (gcode->has_letter('Y')) {
+                    int32_t val = (int32_t)gcode->get_value('Y');
+                    set_y_count(val);
+                    if (y_counts_per_mm != 0)
+                        y_encoder_offset = THEROBOT->get_axis_position(Y_AXIS) - (float)val / y_counts_per_mm;
+                    else
+                        y_encoder_offset = THEROBOT->get_axis_position(Y_AXIS);
+                }
                 gcode->stream->printf("ok\n");
                 break;
+            }
 
             case 921: // report stepper step counts
                 report_stepper_position(gcode->stream);
@@ -165,10 +270,16 @@ void Encoder::on_gcode_received(void *argument)
                 if (!THEKERNEL->conveyor->is_idle()) {
                     gcode->stream->printf("error: machine is moving\n");
                 } else {
-                    if (gcode->has_letter('X'))
-                        THEKERNEL->robot->actuators[0]->current_position_steps = (int32_t)gcode->get_value('X');
-                    if (gcode->has_letter('Y'))
-                        THEKERNEL->robot->actuators[1]->current_position_steps = (int32_t)gcode->get_value('Y');
+                    if (gcode->has_letter('X')) {
+                        int32_t steps = (int32_t)gcode->get_value('X');
+                        float mm = (float)steps / THEROBOT->actuators[0]->get_steps_per_mm();
+                        THEROBOT->actuators[0]->set_last_milestones(mm, steps);
+                    }
+                    if (gcode->has_letter('Y')) {
+                        int32_t steps = (int32_t)gcode->get_value('Y');
+                        float mm = (float)steps / THEROBOT->actuators[1]->get_steps_per_mm();
+                        THEROBOT->actuators[1]->set_last_milestones(mm, steps);
+                    }
                     gcode->stream->printf("ok\n");
                 }
                 break;
@@ -225,12 +336,19 @@ void Encoder::auto_calibrate(StreamOutput *stream, float distance)
 
     THEROBOT->pop_state();
 
-    // Calculate counts per mm from absolute encoder counts
-    int32_t abs_ex = ex < 0 ? -ex : ex;
-    int32_t abs_ey = ey < 0 ? -ey : ey;
-    x_counts_per_mm = (float)abs_ex / distance;
-    y_counts_per_mm = (float)abs_ey / distance;
+    // counts_per_mm = encoder_counts / position_change
+    // Move was -distance, so position_change = -distance
+    // Signed result captures encoder polarity
+    x_counts_per_mm = (float)(-ex) / distance;
+    y_counts_per_mm = (float)(-ey) / distance;
 
-    // Report raw counts (sign indicates encoder direction) and calibrated values
+    // Set encoder offset to current position (we're back at home)
+    x_encoder_offset = THEROBOT->get_axis_position(X_AXIS);
+    y_encoder_offset = THEROBOT->get_axis_position(Y_AXIS);
+
+    // Re-zero encoders at home position
+    set_x_count(0);
+    set_y_count(0);
+
     stream->printf("ok EX:%ld EY:%ld X:%.4f Y:%.4f\n", ex, ey, x_counts_per_mm, y_counts_per_mm);
 }

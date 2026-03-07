@@ -19,11 +19,16 @@ class Encoder : public Module {
 
     private:
         void init_encoders();
+        void init_output_compare();
         void report_encoder_position(StreamOutput *stream);
         void report_stepper_position(StreamOutput *stream);
         void auto_calibrate(StreamOutput *stream, float distance);
+        void arm_x_target(int32_t target);
+        void arm_y_target(int32_t target);
 
         float x_counts_per_mm;
         float y_counts_per_mm;
+        float x_encoder_offset;
+        float y_encoder_offset;
         bool encoder_enabled;
 };

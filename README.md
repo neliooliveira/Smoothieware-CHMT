@@ -12,7 +12,31 @@ This firmware has not yet been tested on the CHM-T48VB (RS422 serial). If you ha
 
 ## Building
 
-Follow the standard Smoothieware build process. From the project root:
+### Toolchain
+
+Install the ARM GCC toolchain. On macOS:
+
+```bash
+brew install --cask gcc-arm-embedded
+```
+
+On Debian/Ubuntu:
+
+```bash
+sudo apt install gcc-arm-none-eabi
+```
+
+Then symlink the toolchain into the project root so the build system finds it:
+
+```bash
+ln -s $(dirname $(dirname $(which arm-none-eabi-gcc))) gcc-arm-none-eabi
+```
+
+Tested with GCC 15.2 (`arm-none-eabi-gcc`). The build system includes compatibility patches for this version (older Smoothieware forks may not build with GCC 15+).
+
+### Compiling
+
+From the project root:
 
 ```bash
 make clean
@@ -146,22 +170,24 @@ encoder_x_counts_per_mm       0        # set via M923 or M924 after calibration
 encoder_y_counts_per_mm       0        # set via M923 or M924 after calibration
 ```
 
-When both `encoder_x_counts_per_mm` and `encoder_y_counts_per_mm` are non-zero, encoder-driven position control is active.
+When both `encoder_x_counts_per_mm` and `encoder_y_counts_per_mm` are non-zero, encoder-driven position control is active. In this mode, the encoder is the position authority: G0/G1 moves use hardware Output Compare interrupts on TIM2/TIM5 to stop the motor when the encoder reaches the target position. The stepper keeps stepping until the encoder says it has arrived, making lost steps irrelevant — the motor simply takes slightly longer to reach the target.
+
+`M919` establishes the encoder-to-position mapping. After homing, send `M919 X0 Y0` to zero the encoders at the home position.
 
 #### Encoder M-codes
 
 | Code | Parameters | Description |
 |------|------------|-------------|
 | `M918` | | Report encoder positions. Response: `ok EX:<count> EY:<count>` |
-| `M919` | `Xnnn Ynnn` | Set encoder counters (e.g., `M919 X0 Y0` to zero after homing) |
+| `M919` | `Xnnn Ynnn` | Set encoder counters and establish position reference (e.g., `M919 X0 Y0` to zero after homing) |
 | `M921` | | Report stepper step counts. Response: `ok SX:<count> SY:<count>` |
 | `M922` | `Xnnn Ynnn` | Set stepper step counts. Returns error if machine is moving. |
-| `M923` | `Xnnn Ynnn` | Set encoder counts per mm. Reports current values if called without parameters. |
-| `M924` | | Auto-calibrate encoder counts per mm. Moves axes slowly over a known distance, measures encoder response, calculates and sets counts per mm. Must be homed first. |
+| `M923` | `Xnnn Ynnn` | Set encoder counts per mm (signed: sign captures encoder polarity). Reports current values if called without parameters. |
+| `M924` | `Dnnn` | Auto-calibrate encoder counts per mm. Default distance: `min(alpha_max_travel, beta_max_travel) / 2`. Optional `D` parameter overrides calibration distance. Must be homed first. |
 
 #### Encoder Calibration
 
-After homing, run `M924` to auto-calibrate. The machine moves slowly toward the origin (front-left), measures encoder counts over the travel distance, and calculates counts per mm for both axes. Alternatively, calibrate manually:
+After homing, run `M924` to auto-calibrate. The machine moves slowly toward the origin (front-left), measures encoder counts over the travel distance, and calculates signed counts per mm for both axes (the sign captures encoder polarity). Alternatively, calibrate manually:
 
 1. Home the machine (`G28`)
 2. Zero encoders: `M919 X0 Y0`
