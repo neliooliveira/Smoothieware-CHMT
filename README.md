@@ -174,6 +174,10 @@ When both `encoder_x_counts_per_mm` and `encoder_y_counts_per_mm` are non-zero, 
 
 `M919` establishes the encoder-to-position mapping. After homing, send `M919 X0 Y0` to zero the encoders at the home position.
 
+#### Move Timeout Safety
+
+When encoder-driven position control is active, each armed move has a timeout: 2 seconds plus 2 seconds per mm of travel distance. If the encoder does not reach the target within this window, the firmware stops the motor and enters HALT. This catches mechanical jams, encoder failures, and stalls without requiring additional hardware. The machine can be recovered with `M999`.
+
 #### Encoder M-codes
 
 | Code | Parameters | Description |

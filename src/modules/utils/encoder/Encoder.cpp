@@ -7,17 +7,26 @@
 #include "ConfigValue.h"
 #include "Gcode.h"
 #include "libs/StreamOutput.h"
+#include "libs/StreamOutputPool.h"
 #include "Robot.h"
 #include "StepperMotor.h"
 #include "Conveyor.h"
 
 #include "stm32f4xx_hal.h"
+#include "mbed.h" // for us_ticker_read()
+#include <math.h>
 
 #define encoder_enable_checksum          CHECKSUM("encoder_enable")
 #define encoder_x_counts_per_mm_checksum CHECKSUM("encoder_x_counts_per_mm")
 #define encoder_y_counts_per_mm_checksum CHECKSUM("encoder_y_counts_per_mm")
 #define alpha_max_travel_checksum        CHECKSUM("alpha_max_travel")
 #define beta_max_travel_checksum         CHECKSUM("beta_max_travel")
+
+// Timeout: 2 seconds per mm of travel, plus a 2-second floor for short moves.
+// This corresponds to a minimum expected speed of 0.5 mm/s — anything slower
+// than that is almost certainly stalled.
+#define TIMEOUT_US_PER_MM  2000000
+#define TIMEOUT_FLOOR_US   2000000
 
 static TIM_HandleTypeDef htim2;
 static TIM_HandleTypeDef htim5;
@@ -32,7 +41,10 @@ extern "C" void TIM2_IRQHandler(void)
     if (TIM2->SR & TIM_SR_CC3IF) {
         TIM2->SR = ~TIM_SR_CC3IF;
         TIM2->DIER &= ~TIM_DIER_CC3IE;
-        if (x_stepper) x_stepper->stop_moving();
+        if (x_stepper) {
+            x_stepper->stop_moving();
+            x_stepper->set_encoder_controlled(false);
+        }
     }
 }
 
@@ -42,7 +54,10 @@ extern "C" void TIM5_IRQHandler(void)
     if (TIM5->SR & TIM_SR_CC3IF) {
         TIM5->SR = ~TIM_SR_CC3IF;
         TIM5->DIER &= ~TIM_DIER_CC3IE;
-        if (y_stepper) y_stepper->stop_moving();
+        if (y_stepper) {
+            y_stepper->stop_moving();
+            y_stepper->set_encoder_controlled(false);
+        }
     }
 }
 
@@ -53,6 +68,12 @@ Encoder::Encoder()
     y_counts_per_mm = 0;
     x_encoder_offset = 0;
     y_encoder_offset = 0;
+    x_move_armed = false;
+    y_move_armed = false;
+    x_arm_time_us = 0;
+    y_arm_time_us = 0;
+    x_move_distance_mm = 0;
+    y_move_distance_mm = 0;
 }
 
 void Encoder::on_module_loaded()
@@ -74,6 +95,8 @@ void Encoder::on_module_loaded()
     init_output_compare();
 
     this->register_for_event(ON_GCODE_RECEIVED);
+    this->register_for_event(ON_IDLE);
+    this->register_for_event(ON_HALT);
 }
 
 void Encoder::init_encoders()
@@ -165,18 +188,46 @@ void Encoder::init_output_compare()
 
 void Encoder::arm_x_target(int32_t target)
 {
+    x_move_distance_mm = fabsf((float)(target - get_x_count()) / x_counts_per_mm);
+    x_arm_time_us = us_ticker_read();
+
     TIM2->CCR3 = (uint32_t)target;
     TIM2->SR = ~TIM_SR_CC3IF;     // clear any stale flag
     TIM2->DIER |= TIM_DIER_CC3IE; // enable CC3 interrupt
     x_stepper->set_encoder_controlled(true);
+    x_move_armed = true;
 }
 
 void Encoder::arm_y_target(int32_t target)
 {
+    y_move_distance_mm = fabsf((float)(target - get_y_count()) / y_counts_per_mm);
+    y_arm_time_us = us_ticker_read();
+
     TIM5->CCR3 = (uint32_t)target;
     TIM5->SR = ~TIM_SR_CC3IF;
     TIM5->DIER |= TIM_DIER_CC3IE;
     y_stepper->set_encoder_controlled(true);
+    y_move_armed = true;
+}
+
+void Encoder::disarm_x()
+{
+    TIM2->DIER &= ~TIM_DIER_CC3IE;
+    if (x_stepper) {
+        x_stepper->stop_moving();
+        x_stepper->set_encoder_controlled(false);
+    }
+    x_move_armed = false;
+}
+
+void Encoder::disarm_y()
+{
+    TIM5->DIER &= ~TIM_DIER_CC3IE;
+    if (y_stepper) {
+        y_stepper->stop_moving();
+        y_stepper->set_encoder_controlled(false);
+    }
+    y_move_armed = false;
 }
 
 int32_t Encoder::get_x_count()
@@ -197,6 +248,48 @@ void Encoder::set_x_count(int32_t count)
 void Encoder::set_y_count(int32_t count)
 {
     TIM5->CNT = (uint32_t)count;
+}
+
+void Encoder::on_idle(void *argument)
+{
+    // Check for move timeouts on armed encoder-controlled axes
+    if (x_move_armed) {
+        if (!x_stepper->is_moving()) {
+            // OC fired normally, just clear armed state
+            x_move_armed = false;
+        } else {
+            uint32_t elapsed_us = us_ticker_read() - x_arm_time_us;
+            uint32_t timeout_us = TIMEOUT_FLOOR_US + (uint32_t)(x_move_distance_mm * TIMEOUT_US_PER_MM);
+            if (elapsed_us > timeout_us) {
+                disarm_x();
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                THEKERNEL->streams->printf("error: encoder X move timeout\n");
+            }
+        }
+    }
+
+    if (y_move_armed) {
+        if (!y_stepper->is_moving()) {
+            y_move_armed = false;
+        } else {
+            uint32_t elapsed_us = us_ticker_read() - y_arm_time_us;
+            uint32_t timeout_us = TIMEOUT_FLOOR_US + (uint32_t)(y_move_distance_mm * TIMEOUT_US_PER_MM);
+            if (elapsed_us > timeout_us) {
+                disarm_y();
+                THEKERNEL->call_event(ON_HALT, nullptr);
+                THEKERNEL->streams->printf("error: encoder Y move timeout\n");
+            }
+        }
+    }
+}
+
+void Encoder::on_halt(void *argument)
+{
+    if (argument == nullptr) {
+        // Entering halt: disarm any active encoder-controlled moves
+        if (x_move_armed) disarm_x();
+        if (y_move_armed) disarm_y();
+    }
 }
 
 void Encoder::report_encoder_position(StreamOutput *stream)
