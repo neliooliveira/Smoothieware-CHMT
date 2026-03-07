@@ -9,6 +9,7 @@
 #include "libs/StreamOutput.h"
 #include "Robot.h"
 #include "StepperMotor.h"
+#include "Conveyor.h"
 
 #include "stm32f4xx_hal.h"
 
@@ -156,6 +157,18 @@ void Encoder::on_gcode_received(void *argument)
 
             case 921: // report stepper step counts
                 report_stepper_position(gcode->stream);
+                break;
+
+            case 922: // set stepper step counters (only when idle)
+                if (!THEKERNEL->conveyor->is_idle()) {
+                    gcode->stream->printf("error: machine is moving\n");
+                } else {
+                    if (gcode->has_letter('X'))
+                        THEKERNEL->robot->actuators[0]->current_position_steps = (int32_t)gcode->get_value('X');
+                    if (gcode->has_letter('Y'))
+                        THEKERNEL->robot->actuators[1]->current_position_steps = (int32_t)gcode->get_value('Y');
+                    gcode->stream->printf("ok\n");
+                }
                 break;
 
             case 923: // set encoder counts per mm
