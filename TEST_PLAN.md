@@ -10,8 +10,7 @@ module) onto the CHM-T48VB for the first time.
   st-flash read firmware-backup-$(date +%Y%m%d).bin 0x08000000 0x80000
   ```
 - [ ] Build the new firmware from `c-riegel/Smoothieware-CHMT` `chmt` branch
-- [ ] Apply post-build binary fixup (the claude instance on the Ubuntu machine
-      knows this procedure — have it document the steps to README.md)
+- [ ] Pad the binary to 512KB for ST-Link V3 (see README.md "Flashing via SWD")
 - [ ] Keep the backup binary and the StarTech ICUSB422IS adapter ready for
       rollback
 
@@ -137,11 +136,13 @@ Requires encoder-driven control to be working (Phases 3-4 passed).
 
 ## Rollback Procedure
 
-If anything goes wrong:
+If anything goes wrong, the backup binary is already 512KB (full flash read)
+so it can be written directly without padding:
 ```bash
 st-flash write firmware-backup-YYYYMMDD.bin 0x08000000
 ```
-The machine should return to its previous working state.
+If the first attempt fails (flash loader error), retry immediately — the second
+attempt usually succeeds. Power cycle the machine after flashing.
 
 ## Results
 

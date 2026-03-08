@@ -45,16 +45,57 @@ make all
 
 The build targets STM32F407xG. Config is compiled into the binary via `src/config.default`.
 
-To flash via SWD:
+### Flashing via SWD
 
-```bash
-st-flash write STM32F407xG/main.bin 0x08000000
-```
-
-To back up existing firmware before flashing:
+Back up existing firmware before flashing:
 
 ```bash
 st-flash read firmware-backup-$(date +%Y%m%d).bin 0x08000000 0x80000
+```
+
+#### st-flash v1.8.0 + ST-Link V3: required binary padding
+
+`st-flash` v1.8.0 has a bug when used with ST-Link V3 programmers: the flash
+loader it uploads to SRAM crashes (CFSR 0x10000 / UNDEFINSTR) when writing
+binaries smaller than the full 512KB flash. The workaround is to pad the binary
+to exactly 524,288 bytes with `0xFF` (erased flash) before flashing:
+
+```python
+#!/usr/bin/env python3
+# pad-firmware.py — pad main.bin to 512KB for st-flash + ST-Link V3
+import sys
+with open(sys.argv[1], 'rb') as f:
+    data = f.read()
+padded = data + b'\xff' * (524288 - len(data))
+outfile = sys.argv[1].replace('.bin', '-padded.bin')
+with open(outfile, 'wb') as f:
+    f.write(padded)
+print(f'{sys.argv[1]}: {len(data)} bytes -> {outfile}: {len(padded)} bytes')
+```
+
+```bash
+python3 pad-firmware.py STM32F407xG/main.bin
+st-flash write STM32F407xG/main-padded.bin 0x08000000
+```
+
+If the first write attempt fails with a flash loader error, retry immediately —
+the second attempt clears the MCU's fault registers and usually succeeds.
+
+This padding is not needed when flashing with STM32CubeProgrammer or with
+ST-Link V2 programmers.
+
+#### Safety notes
+
+While flashing, the MCU outputs enter an undefined state and GPIOs float. On
+the CHM-T48VB this causes the vacuum pump, blower, and other peripherals to
+run at full power. This is expected and harmless. **Power cycle the machine
+immediately after flashing completes** to restore normal operation.
+
+Always verify the flashed firmware by reading it back and comparing checksums:
+
+```bash
+st-flash read verify.bin 0x08000000 0x80000
+md5sum verify.bin firmware-backup-*.bin
 ```
 
 Note: MRI (gdb over serial) is not supported on STM32. Use SWD/JTAG for debugging.
