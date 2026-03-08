@@ -74,8 +74,16 @@ print(f'{sys.argv[1]}: {len(data)} bytes -> {outfile}: {len(padded)} bytes')
 ```
 
 ```bash
-python3 pad-firmware.py STM32F407xG/main.bin
+python3 tools/pad-firmware.py STM32F407xG/main.bin
 st-flash write STM32F407xG/main-padded.bin 0x08000000
+```
+
+Or use the Makefile targets which handle padding automatically:
+
+```bash
+make stm32-flash    # pad + flash in one step
+make stm32-backup   # read current firmware from MCU
+make stm32-verify   # read back and print md5sum
 ```
 
 If the first write attempt fails with a flash loader error, retry immediately —
