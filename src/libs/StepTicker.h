@@ -20,6 +20,7 @@
 
 class StepperMotor;
 class Block;
+struct FlyByTrigger;
 
 // handle 2.62 Fixed point
 #define STEPTICKER_FPSCALE (1LL<<62)
@@ -27,6 +28,10 @@ class Block;
 
 class StepTicker{
     public:
+        // Optional ISR-safe observer for deterministic peripherals. The callback
+        // executes from TIM7 and must not block, allocate, print, or use floats.
+        using flyby_hook_t = void (*)(const FlyByTrigger& trigger);
+
         StepTicker();
         ~StepTicker();
         void set_frequency( float frequency );
@@ -39,6 +44,8 @@ class StepTicker{
         void step_tick (void);
         void handle_finish (void);
         void start();
+
+        void set_flyby_hook(flyby_hook_t hook) { flyby_hook = hook; }
 
         // whatever setup the block should register this to know when it is done
         std::function<void()> finished_fnc{nullptr};
@@ -57,6 +64,7 @@ class StepTicker{
 
         Block *current_block;
         uint32_t current_tick{0};
+        flyby_hook_t flyby_hook{nullptr};
 
         struct {
             volatile bool running:1;
