@@ -8,6 +8,7 @@
 #include "StepTicker.h"
 #include "StreamOutput.h"
 #include "StreamOutputPool.h"
+#include "modules/robot/Block.h"
 
 #include <algorithm>
 #include <math.h>
@@ -19,6 +20,42 @@
 #define flyby_strobe_width_checksum         CHECKSUM("flyby_strobe_width_us")
 
 FlyByVision *FlyByVision::instance = nullptr;
+
+namespace {
+struct MotionState { double s; double v; double a; };
+
+static inline void integrate(MotionState& st, double jerk, double dt)
+{
+    st.s += st.v * dt + 0.5 * st.a * dt * dt + jerk * dt * dt * dt / 6.0;
+    st.v += st.a * dt + 0.5 * jerk * dt * dt;
+    st.a += jerk * dt;
+}
+
+static double scurve_position_at(const Block& block, double t, double frequency)
+{
+    const double v0 = (double)block.entry_speed * (double)block.steps_event_count / (double)block.millimeters;
+    const double vmax = (double)block.maximum_rate;
+    const double ta_j = (double)block.s_curve_phase_end[0] / frequency;
+    const double ta_c = (double)(block.s_curve_phase_end[1] - block.s_curve_phase_end[0]) / frequency;
+    const double td_j = (double)(block.s_curve_phase_end[4] - block.s_curve_phase_end[3]) / frequency;
+    const double td_c = (double)(block.s_curve_phase_end[5] - block.s_curve_phase_end[4]) / frequency;
+    const double jacc = (ta_j > 0.0 && (ta_j + ta_c) > 0.0) ? (vmax - v0) / (ta_j * (ta_j + ta_c)) : 0.0;
+    const double vf = (double)block.exit_speed * (double)block.steps_event_count / (double)block.millimeters;
+    const double jdec = (td_j > 0.0 && (td_j + td_c) > 0.0) ? (vmax - vf) / (td_j * (td_j + td_c)) : 0.0;
+    const double jerks[7] = { jacc, 0.0, -jacc, 0.0, -jdec, 0.0, jdec };
+    MotionState st{0.0, v0, 0.0};
+    uint32_t previous_tick = 0;
+    for(int phase = 0; phase < 7 && t > 0.0; ++phase) {
+        const uint32_t end_tick = block.s_curve_phase_end[phase];
+        const double duration = (double)(end_tick - previous_tick) / frequency;
+        const double dt = std::min(t, duration);
+        integrate(st, jerks[phase], dt);
+        t -= dt;
+        previous_tick = end_tick;
+    }
+    return st.s;
+}
+}
 
 FlyByVision::FlyByVision() { instance = this; }
 
@@ -35,8 +72,7 @@ void FlyByVision::load_config()
     enabled = THEKERNEL->config->value(flyby_enable_checksum)->by_default(false)->as_bool();
     camera_pin.from_string(THEKERNEL->config->value(flyby_camera_pin_checksum)->by_default("nc")->as_string())->as_output();
     strobe_pin.from_string(THEKERNEL->config->value(flyby_strobe_pin_checksum)->by_default("nc")->as_string())->as_output();
-    camera_pin.set(false);
-    strobe_pin.set(false);
+    camera_pin.set(false); strobe_pin.set(false);
     const float tick_us = 1000000.0F / THEKERNEL->step_ticker->get_frequency();
     float camera_us = THEKERNEL->config->value(flyby_camera_width_checksum)->by_default(20.0F)->as_number();
     float strobe_us = THEKERNEL->config->value(flyby_strobe_width_checksum)->by_default(40.0F)->as_number();
@@ -94,35 +130,24 @@ void FlyByVision::set_timing(Gcode *gcode)
     gcode->stream->printf("flyby timing C%lu L%lu ticks\n", camera_width_ticks, strobe_width_ticks);
 }
 
-void FlyByVision::cancel()
-{
-    pending.clear();
-    pending_distance_mm = 0.0F;
-    pending_fraction = -1.0F;
-}
+void FlyByVision::cancel() { pending.clear(); pending_distance_mm = 0.0F; pending_fraction = -1.0F; }
 
 void FlyByVision::status(Gcode *gcode)
 {
     gcode->stream->printf("flyby enabled=%d mode=%u pending=%d I%u N%u D%.3f lost=%lu\n", enabled ? 1 : 0,
-        (unsigned)mode, pending.enabled() ? 1 : 0, pending.trigger_id, pending.nozzle_id,
-        pending_distance_mm, fired_overflow);
+        (unsigned)mode, pending.enabled() ? 1 : 0, pending.trigger_id, pending.nozzle_id, pending_distance_mm, fired_overflow);
 }
 
 bool FlyByVision::consume_pending(FlyByTrigger& trigger, float block_mm)
 {
+    trigger.clear();
     if(!enabled || mode == FlyByProtocol::LIVE || !pending.enabled() || block_mm <= 0.0F) return false;
-
     float distance_mm = 0.0F;
-    if(pending_fraction >= 0.0F) {
-        distance_mm = pending_fraction * block_mm;
-    } else {
-        if(pending_distance_mm > block_mm) {
-            pending_distance_mm -= block_mm;
-            return false;
-        }
+    if(pending_fraction >= 0.0F) distance_mm = pending_fraction * block_mm;
+    else {
+        if(pending_distance_mm > block_mm) { pending_distance_mm -= block_mm; return false; }
         distance_mm = pending_distance_mm;
     }
-
     trigger = pending;
     distance_mm = std::max(0.0F, std::min(block_mm, distance_mm));
     trigger.trigger_distance_um = (uint32_t)(distance_mm * 1000.0F + 0.5F);
@@ -131,45 +156,48 @@ bool FlyByVision::consume_pending(FlyByTrigger& trigger, float block_mm)
     return true;
 }
 
-void FlyByVision::finalize_trigger_tick(FlyByTrigger& trigger, float block_mm,
-                                        float entry_speed, float exit_speed,
-                                        float maximum_rate_steps_s, uint32_t steps_event_count,
-                                        uint32_t accelerate_until, uint32_t decelerate_after,
-                                        uint32_t total_move_ticks, float tick_frequency)
+void FlyByVision::finalize_trigger_tick(FlyByTrigger& trigger, const Block& block, float tick_frequency)
 {
-    if(!trigger.enabled() || block_mm <= 0.0F || steps_event_count == 0 || total_move_ticks == 0 || tick_frequency <= 0.0F) return;
-
+    if(!trigger.enabled() || block.millimeters <= 0.0F || block.steps_event_count == 0 || block.total_move_ticks == 0 || tick_frequency <= 0.0F) return;
     double distance_mm = (double)trigger.trigger_distance_um / 1000.0;
-    if(distance_mm > block_mm) distance_mm = block_mm;
-    const double target_steps = distance_mm * (double)steps_event_count / (double)block_mm;
-    const double t_acc = (double)accelerate_until / tick_frequency;
-    const double t_dec_start = (double)decelerate_after / tick_frequency;
-    const double t_total = (double)total_move_ticks / tick_frequency;
-    const double t_dec = t_total - t_dec_start;
-    const double v0 = (double)entry_speed * (double)steps_event_count / (double)block_mm;
-    const double vf = (double)exit_speed * (double)steps_event_count / (double)block_mm;
-    const double vmax = (double)maximum_rate_steps_s;
-    const double a_acc = t_acc > 0.0 ? (vmax - v0) / t_acc : 0.0;
-    const double a_dec = t_dec > 0.0 ? (vmax - vf) / t_dec : 0.0;
-    const double s_acc = t_acc > 0.0 ? (v0 + vmax) * 0.5 * t_acc : 0.0;
-    const double t_plateau = std::max(0.0, t_dec_start - t_acc);
-    const double s_plateau = vmax * t_plateau;
-
+    if(distance_mm > block.millimeters) distance_mm = block.millimeters;
+    const double target_steps = distance_mm * (double)block.steps_event_count / (double)block.millimeters;
     double t = 0.0;
-    if(target_steps <= s_acc && a_acc > 0.0) {
-        t = (-v0 + sqrt(v0 * v0 + 2.0 * a_acc * target_steps)) / a_acc;
-    } else if(target_steps <= s_acc + s_plateau || a_dec <= 0.0) {
-        t = t_acc + (vmax > 0.0 ? (target_steps - s_acc) / vmax : 0.0);
+
+    if(block.s_curve_active) {
+        const double total_time = (double)block.total_move_ticks / tick_frequency;
+        double lo = 0.0, hi = total_time;
+        for(int i = 0; i < 40; ++i) {
+            const double mid = 0.5 * (lo + hi);
+            if(scurve_position_at(block, mid, tick_frequency) < target_steps) lo = mid;
+            else hi = mid;
+        }
+        t = 0.5 * (lo + hi);
     } else {
-        const double s2 = target_steps - s_acc - s_plateau;
-        double radicand = vmax * vmax - 2.0 * a_dec * s2;
-        if(radicand < 0.0) radicand = 0.0;
-        const double td = (vmax - sqrt(radicand)) / a_dec;
-        t = t_dec_start + td;
+        const double t_acc = (double)block.accelerate_until / tick_frequency;
+        const double t_dec_start = (double)block.decelerate_after / tick_frequency;
+        const double t_total = (double)block.total_move_ticks / tick_frequency;
+        const double t_dec = t_total - t_dec_start;
+        const double v0 = (double)block.entry_speed * (double)block.steps_event_count / (double)block.millimeters;
+        const double vf = (double)block.exit_speed * (double)block.steps_event_count / (double)block.millimeters;
+        const double vmax = (double)block.maximum_rate;
+        const double a_acc = t_acc > 0.0 ? (vmax - v0) / t_acc : 0.0;
+        const double a_dec = t_dec > 0.0 ? (vmax - vf) / t_dec : 0.0;
+        const double s_acc = t_acc > 0.0 ? (v0 + vmax) * 0.5 * t_acc : 0.0;
+        const double t_plateau = std::max(0.0, t_dec_start - t_acc);
+        const double s_plateau = vmax * t_plateau;
+        if(target_steps <= s_acc && a_acc > 0.0) t = (-v0 + sqrt(v0*v0 + 2.0*a_acc*target_steps)) / a_acc;
+        else if(target_steps <= s_acc + s_plateau || a_dec <= 0.0) t = t_acc + (vmax > 0.0 ? (target_steps-s_acc)/vmax : 0.0);
+        else {
+            const double s2 = target_steps - s_acc - s_plateau;
+            double radicand = vmax*vmax - 2.0*a_dec*s2;
+            if(radicand < 0.0) radicand = 0.0;
+            t = t_dec_start + (vmax - sqrt(radicand)) / a_dec;
+        }
     }
 
     uint32_t tick = (uint32_t)floor(t * tick_frequency);
-    if(tick >= total_move_ticks) tick = total_move_ticks - 1;
+    if(tick >= block.total_move_ticks) tick = block.total_move_ticks - 1;
     trigger.trigger_tick = tick;
 }
 
@@ -181,16 +209,10 @@ void FlyByVision::trigger_from_isr(const FlyByTrigger& trigger)
     if((trigger.flags & FlyByTrigger::LED_STROBE) && self->strobe_pin.connected()) self->strobe_pin.set(true);
     self->camera_off_tick = self->camera_width_ticks;
     self->strobe_off_tick = self->strobe_width_ticks;
-
     const uint8_t head = self->fired_head;
     const uint8_t next = (uint8_t)((head + 1) % FIRED_QUEUE_SIZE);
-    if(next == self->fired_tail) {
-        ++self->fired_overflow;
-    } else {
-        self->fired_queue[head].trigger_id = trigger.trigger_id;
-        self->fired_queue[head].nozzle_id = trigger.nozzle_id;
-        self->fired_head = next;
-    }
+    if(next == self->fired_tail) ++self->fired_overflow;
+    else { self->fired_queue[head].trigger_id = trigger.trigger_id; self->fired_queue[head].nozzle_id = trigger.nozzle_id; self->fired_head = next; }
 }
 
 void FlyByVision::service_pulses_from_isr()
