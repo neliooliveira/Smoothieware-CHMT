@@ -21,6 +21,7 @@ using namespace std;
 #include "checksumm.h"
 #include "Robot.h"
 #include "ConfigValue.h"
+#include "StepTicker.h"
 #include "modules/tools/flybyvision/FlyByVision.h"
 
 #include <math.h>
@@ -29,6 +30,22 @@ using namespace std;
 #define junction_deviation_checksum    CHECKSUM("junction_deviation")
 #define z_junction_deviation_checksum  CHECKSUM("z_junction_deviation")
 #define minimum_planner_speed_checksum CHECKSUM("minimum_planner_speed")
+
+static inline void finalize_flyby_trigger(Block *block)
+{
+    if(block != nullptr && block->flyby_trigger.enabled()) {
+        FlyByVision::finalize_trigger_tick(block->flyby_trigger,
+                                           block->millimeters,
+                                           block->entry_speed,
+                                           block->exit_speed,
+                                           block->maximum_rate,
+                                           block->steps_event_count,
+                                           block->accelerate_until,
+                                           block->decelerate_after,
+                                           block->total_move_ticks,
+                                           THEKERNEL->step_ticker->get_frequency());
+    }
+}
 
 // The Planner does the acceleration math for the queue of Blocks ( movements ).
 // It makes sure the speed stays within the configured constraints ( acceleration, junction_deviation, etc )
@@ -97,7 +114,7 @@ bool Planner::append_block( ActuatorCoordinates &actuator_pos, uint8_t n_motors,
     // use default JD
     float junction_deviation = this->junction_deviation;
 
-    // use either regular junction deviation or z specific 
+    // use either regular junction deviation or z specific
     if(z_only && !isnan(this->z_junction_deviation)) {
         junction_deviation = this->z_junction_deviation;
     }
@@ -146,7 +163,7 @@ bool Planner::append_block( ActuatorCoordinates &actuator_pos, uint8_t n_motors,
     // if unit_vec was null then it was not a primary axis move so we skip the junction deviation stuff
     if (unit_vec != nullptr && !THECONVEYOR->is_queue_empty()) {
         Block *prev_block = THECONVEYOR->queue.item_ref(THECONVEYOR->queue.prev(THECONVEYOR->queue.head_i));
-        if (junction_deviation > 0.0F 
+        if (junction_deviation > 0.0F
             && prev_block->primary_axis == block->primary_axis // distance calculation (primary/auxiliary) must match
             && prev_block->nominal_speed > 0.0F) {
             // Compute cosine of angle between previous and current path. (prev_unit_vec is negative)
@@ -165,14 +182,14 @@ bool Planner::append_block( ActuatorCoordinates &actuator_pos, uint8_t n_motors,
                 if (cos_theta >= -0.9999F) {
                     // Compute maximum junction velocity based on maximum acceleration and junction deviation
                     float sin_theta_d2 = sqrtf(0.5F * (1.0F - cos_theta)); // Trig half angle identity. Always positive.
-                    
-                    // Take the minimal acceleration of both blocks symmetrically, so if some of the axes come to a stop in the junction 
-                    // and are not involved in the new block their respective acceleration limit as applied in the previous block is still 
-                    // respected and properly multiplied with the junction deviation value here. This matters, if the axes involved before 
-                    // the junction have much lower accelerator limits than the axes involved after the junction. Example: 90° corner in Y 
-                    // then X on a portal CNC mill where the heavy portal can decelerate much slower than the light tool head on the X 
+
+                    // Take the minimal acceleration of both blocks symmetrically, so if some of the axes come to a stop in the junction
+                    // and are not involved in the new block their respective acceleration limit as applied in the previous block is still
+                    // respected and properly multiplied with the junction deviation value here. This matters, if the axes involved before
+                    // the junction have much lower accelerator limits than the axes involved after the junction. Example: 90° corner in Y
+                    // then X on a portal CNC mill where the heavy portal can decelerate much slower than the light tool head on the X
                     // axis can accelerate.
-                    // Note that by properly respecting acceleration limits across all the axes, even auxilliary axes can be mixed in. 
+                    // Note that by properly respecting acceleration limits across all the axes, even auxilliary axes can be mixed in.
                     float max_acceleration = std::min(prev_block->acceleration, block->acceleration);
                     vmax_junction = std::min(vmax_junction, sqrtf(max_acceleration * junction_deviation * sin_theta_d2 / (1.0F - sin_theta_d2)));
                 }
@@ -208,14 +225,6 @@ bool Planner::append_block( ActuatorCoordinates &actuator_pos, uint8_t n_motors,
 
     // Math-heavy re-computing of the whole queue to take the new
     this->recalculate();
-
-    // FlyByVision stores the spatial position as a normalized uint32_t while
-    // the planner is building the block. Convert it only after the final
-    // trapezoid has established total_move_ticks.
-    if(block->flyby_trigger.enabled() && block->total_move_ticks > 0) {
-        const double fraction = (double)block->flyby_trigger.trigger_tick / 4294967295.0;
-        block->flyby_trigger.trigger_tick = (uint32_t)(fraction * (double)(block->total_move_ticks - 1));
-    }
 
     // The block can now be used
     block->ready();
@@ -299,6 +308,7 @@ void Planner::recalculate()
             exit_speed = current->forward_pass(exit_speed);
 
             previous->calculate_trapezoid(previous->entry_speed, current->entry_speed);
+            finalize_flyby_trigger(previous);
         }
     }
 
@@ -310,6 +320,7 @@ void Planner::recalculate()
     // now current points to the head item
     // which has not had calculate_trapezoid run yet
     current->calculate_trapezoid(current->entry_speed, minimum_planner_speed);
+    finalize_flyby_trigger(current);
 }
 
 
