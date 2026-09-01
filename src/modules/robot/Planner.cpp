@@ -124,7 +124,9 @@ bool Planner::append_block( ActuatorCoordinates &actuator_pos, uint8_t n_motors,
     block->max_entry_speed = vmax_junction;
     float v_allowable = max_allowable_speed(-acceleration, minimum_planner_speed, block->millimeters);
     block->entry_speed = std::min(vmax_junction, v_allowable);
-    block->nominal_length_flag = (block->nominal_speed <= v_allowable);
+    // This optimization assumes constant acceleration. Jerk-limited blocks must
+    // always be checked by the reverse/forward passes.
+    block->nominal_length_flag = (block->s_curve_jerk <= 0.0F) && (block->nominal_speed <= v_allowable);
     block->recalculate_flag = true;
     if(unit_vec != nullptr) memcpy(previous_unit_vec, unit_vec, sizeof(previous_unit_vec));
     else memset(previous_unit_vec, 0, sizeof(previous_unit_vec));
