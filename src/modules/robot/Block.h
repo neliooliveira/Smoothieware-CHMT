@@ -9,6 +9,7 @@
 
 #include <bitset>
 #include "ActuatorCoordinates.h"
+#include "modules/tools/flybyvision/FlyByTrigger.h"
 
 class Block {
     public:
@@ -51,6 +52,10 @@ class Block {
         uint32_t decelerate_after;
         uint32_t total_move_ticks;
         std::bitset<k_max_actuators> direction_bits;     // Direction for each axis in bit form, relative to the direction port's mask
+
+        // Optional deterministic fly-by trigger carried with this motion block.
+        // It is consumed by StepTicker using integer-only comparisons in the ISR.
+        FlyByTrigger flyby_trigger;
 
         // this is the data needed to determine when each motor needs to be issued a step
         using tickinfo_t= struct {
