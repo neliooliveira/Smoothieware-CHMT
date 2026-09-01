@@ -103,8 +103,9 @@ void FlyByVision::cancel()
 
 void FlyByVision::status(Gcode *gcode)
 {
-    gcode->stream->printf("flyby enabled=%d mode=%u pending=%d I%u N%u D%.3f\n", enabled ? 1 : 0,
-        (unsigned)mode, pending.enabled() ? 1 : 0, pending.trigger_id, pending.nozzle_id, pending_distance_mm);
+    gcode->stream->printf("flyby enabled=%d mode=%u pending=%d I%u N%u D%.3f lost=%lu\n", enabled ? 1 : 0,
+        (unsigned)mode, pending.enabled() ? 1 : 0, pending.trigger_id, pending.nozzle_id,
+        pending_distance_mm, fired_overflow);
 }
 
 bool FlyByVision::consume_pending(FlyByTrigger& trigger, float block_mm)
@@ -113,11 +114,8 @@ bool FlyByVision::consume_pending(FlyByTrigger& trigger, float block_mm)
 
     float distance_mm = 0.0F;
     if(pending_fraction >= 0.0F) {
-        // Percentage is intentionally relative to the next generated block.
         distance_mm = pending_fraction * block_mm;
     } else {
-        // Absolute distance is relative to the complete forthcoming path and
-        // survives internal segmentation until the target lies in this block.
         if(pending_distance_mm > block_mm) {
             pending_distance_mm -= block_mm;
             return false;
@@ -142,10 +140,8 @@ void FlyByVision::finalize_trigger_tick(FlyByTrigger& trigger, float block_mm,
     if(!trigger.enabled() || block_mm <= 0.0F || steps_event_count == 0 || total_move_ticks == 0 || tick_frequency <= 0.0F) return;
 
     double distance_mm = (double)trigger.trigger_distance_um / 1000.0;
-    if(distance_mm < 0.0) distance_mm = 0.0;
     if(distance_mm > block_mm) distance_mm = block_mm;
     const double target_steps = distance_mm * (double)steps_event_count / (double)block_mm;
-
     const double t_acc = (double)accelerate_until / tick_frequency;
     const double t_dec_start = (double)decelerate_after / tick_frequency;
     const double t_total = (double)total_move_ticks / tick_frequency;
@@ -185,9 +181,16 @@ void FlyByVision::trigger_from_isr(const FlyByTrigger& trigger)
     if((trigger.flags & FlyByTrigger::LED_STROBE) && self->strobe_pin.connected()) self->strobe_pin.set(true);
     self->camera_off_tick = self->camera_width_ticks;
     self->strobe_off_tick = self->strobe_width_ticks;
-    self->fired_id = trigger.trigger_id;
-    self->fired_nozzle = trigger.nozzle_id;
-    self->fired_report_pending = true;
+
+    const uint8_t head = self->fired_head;
+    const uint8_t next = (uint8_t)((head + 1) % FIRED_QUEUE_SIZE);
+    if(next == self->fired_tail) {
+        ++self->fired_overflow;
+    } else {
+        self->fired_queue[head].trigger_id = trigger.trigger_id;
+        self->fired_queue[head].nozzle_id = trigger.nozzle_id;
+        self->fired_head = next;
+    }
 }
 
 void FlyByVision::service_pulses_from_isr()
@@ -200,8 +203,11 @@ void FlyByVision::service_pulses_from_isr()
 
 void FlyByVision::on_idle(void *)
 {
-    if(fired_report_pending) {
-        fired_report_pending = false;
-        THEKERNEL->streams->printf("// FLYBY I%u N%u\n", fired_id, fired_nozzle);
+    while(fired_tail != fired_head) {
+        const uint8_t tail = fired_tail;
+        const uint16_t id = fired_queue[tail].trigger_id;
+        const uint8_t nozzle = fired_queue[tail].nozzle_id;
+        fired_tail = (uint8_t)((tail + 1) % FIRED_QUEUE_SIZE);
+        THEKERNEL->streams->printf("// FLYBY I%u N%u\n", id, nozzle);
     }
 }
