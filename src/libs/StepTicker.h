@@ -5,8 +5,6 @@
       You should have received a copy of the GNU General Public License along with Smoothie. If not, see <http://www.gnu.org/licenses/>.
 */
 
-
-
 #pragma once
 
 #include <stdint.h>
@@ -22,14 +20,11 @@ class StepperMotor;
 class Block;
 struct FlyByTrigger;
 
-// handle 2.62 Fixed point
 #define STEPTICKER_FPSCALE (1LL<<62)
 #define STEPTICKER_FROMFP(x) ((float)(x)/STEPTICKER_FPSCALE)
 
 class StepTicker{
     public:
-        // Optional ISR-safe observer for deterministic peripherals. The callback
-        // executes from TIM7 and must not block, allocate, print, or use floats.
         using flyby_hook_t = void (*)(const FlyByTrigger& trigger);
 
         StepTicker();
@@ -46,16 +41,13 @@ class StepTicker{
         void start();
 
         void set_flyby_hook(flyby_hook_t hook) { flyby_hook = hook; }
-
-        // whatever setup the block should register this to know when it is done
         std::function<void()> finished_fnc{nullptr};
-
         static StepTicker *getInstance() { return instance; }
 
     private:
         static StepTicker *instance;
-
         bool start_next_block();
+        void set_s_curve_phase(uint8_t phase);
 
         float frequency;
         uint32_t period;
@@ -64,6 +56,7 @@ class StepTicker{
 
         Block *current_block;
         uint32_t current_tick{0};
+        uint8_t s_curve_phase{0};
         flyby_hook_t flyby_hook{nullptr};
 
         struct {
