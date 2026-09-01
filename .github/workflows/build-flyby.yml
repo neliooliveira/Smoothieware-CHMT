@@ -1,0 +1,30 @@
+name: Build FlyBy Firmware
+
+on:
+  push:
+    branches:
+      - feature/flyby-vision
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ARM GCC
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi
+
+      - name: Link toolchain
+        run: |
+          TOOLROOT="$(dirname "$(dirname "$(command -v arm-none-eabi-gcc)")")"
+          ln -s "$TOOLROOT" gcc-arm-none-eabi
+          arm-none-eabi-gcc --version
+
+      - name: Build firmware
+        run: |
+          make clean
+          make all
