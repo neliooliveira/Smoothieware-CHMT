@@ -30,58 +30,64 @@ class Block {
     private:
         float max_allowable_speed( float acceleration, float target_velocity, float distance);
         void prepare(float acceleration_in_steps, float deceleration_in_steps);
+        void calculate_s_curve(float entry_speed, float exit_speed);
+        void prepare_s_curve(float accel_jerk_steps_s3, float decel_jerk_steps_s3);
 
-        static double fp_scale; // optimize to store this as it does not change
+        static double fp_scale;
 
     public:
-        std::array<uint32_t, k_max_actuators> steps; // Number of steps for each axis for this block
-        uint32_t steps_event_count;  // Steps for the longest axis
-        float nominal_rate;       // Nominal rate in steps per second
-        float nominal_speed;      // Nominal speed in mm per second
-        float millimeters;        // Distance for this move
+        std::array<uint32_t, k_max_actuators> steps;
+        uint32_t steps_event_count;
+        float nominal_rate;
+        float nominal_speed;
+        float millimeters;
         float entry_speed;
         float exit_speed;
-        float acceleration;       // the acceleration for this block
-        float initial_rate;       // Initial rate in steps per second
+        float acceleration;
+        float initial_rate;
         float maximum_rate;
 
         float max_entry_speed;
 
-        // this is tick info needed for this block. applies to all motors
         uint32_t accelerate_until;
         uint32_t decelerate_after;
         uint32_t total_move_ticks;
-        std::bitset<k_max_actuators> direction_bits;     // Direction for each axis in bit form, relative to the direction port's mask
+        std::bitset<k_max_actuators> direction_bits;
 
-        // Optional deterministic fly-by trigger carried with this motion block.
-        // It is consumed by StepTicker using integer-only comparisons in the ISR.
+        // Jerk-limited 7-phase S-curve. s_curve_jerk is in mm/s^3.
+        // A value <= 0 selects the legacy trapezoidal acceleration profile.
+        float s_curve_jerk;
+        bool s_curve_active;
+        uint32_t s_curve_phase_end[7];
+
         FlyByTrigger flyby_trigger;
 
-        // this is the data needed to determine when each motor needs to be issued a step
         using tickinfo_t= struct {
-            int64_t steps_per_tick; // 2.62 fixed point
-            int64_t counter; // 2.62 fixed point
-            int64_t acceleration_change; // 2.62 fixed point signed
-            int64_t deceleration_change; // 2.62 fixed point
-            int64_t plateau_rate; // 2.62 fixed point
+            int64_t steps_per_tick;
+            int64_t counter;
+            int64_t acceleration_change;
+            int64_t deceleration_change;
+            int64_t plateau_rate;
+            int64_t jerk_change;
+            int64_t accel_jerk_change;
+            int64_t decel_jerk_change;
             uint32_t steps_to_move;
             uint32_t step_count;
             uint32_t next_accel_event;
         };
 
-        // need info for each active motor
         tickinfo_t *tick_info;
 
         static uint8_t n_actuators;
 
         struct {
-            bool recalculate_flag:1;             // Planner flag to recalculate trapezoids on entry junction
-            bool nominal_length_flag:1;          // Planner flag for nominal speed always reached
+            bool recalculate_flag:1;
+            bool nominal_length_flag:1;
             bool is_ready:1;
-            bool primary_axis:1;                 // set if this move is a primary axis
-            bool is_g123:1;                      // set if this is a G1, G2 or G3
-            volatile bool is_ticking:1;          // set when this block is being actively ticked by the stepticker
-            volatile bool locked:1;              // set to true when the critical data is being updated, stepticker will have to skip if this is set
-            uint16_t s_value:12;                 // for laser 1.11 Fixed point
+            bool primary_axis:1;
+            bool is_g123:1;
+            volatile bool is_ticking:1;
+            volatile bool locked:1;
+            uint16_t s_value:12;
         };
 };
