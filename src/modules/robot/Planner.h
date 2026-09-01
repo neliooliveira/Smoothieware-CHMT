@@ -17,18 +17,22 @@ public:
     Planner();
     float max_allowable_speed( float acceleration, float target_velocity, float distance);
 
-    friend class Robot; // for acceleration, junction deviation, minimum_planner_speed
+    friend class Robot;
 
 private:
     bool append_block(ActuatorCoordinates &target, uint8_t n_motors, float rate_mm_s, float distance, float unit_vec[], float accleration, float s_value, bool g123);
     void recalculate();
     void config_load();
     float previous_unit_vec[MAX_ROBOT_ACTUATORS];
-    float junction_deviation;    // Setting
-    float z_junction_deviation;  // Setting
-    float minimum_planner_speed; // Setting
+    float junction_deviation;
+    float z_junction_deviation;
+    float minimum_planner_speed;
+
+    // Optional Pick & Place motion extensions.
+    bool s_curve_enable;
+    float max_jerk;              // physical jerk limit, mm/s^3
+    bool path_blending_enable;
+    float path_tolerance;        // maximum geometric corner deviation, mm
 };
-
-
 
 #endif
