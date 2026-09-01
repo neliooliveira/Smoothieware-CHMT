@@ -48,7 +48,14 @@ private:
 
     volatile uint32_t camera_off_tick{0};
     volatile uint32_t strobe_off_tick{0};
-    volatile uint16_t fired_id{0};
-    volatile uint8_t fired_nozzle{0};
-    volatile bool fired_report_pending{false};
+
+    struct FiredEvent {
+        uint16_t trigger_id;
+        uint8_t nozzle_id;
+    };
+    static const uint8_t FIRED_QUEUE_SIZE = 8;
+    volatile FiredEvent fired_queue[FIRED_QUEUE_SIZE];
+    volatile uint8_t fired_head{0};
+    volatile uint8_t fired_tail{0};
+    volatile uint32_t fired_overflow{0};
 };
