@@ -29,6 +29,7 @@ class Block {
 
     private:
         float max_allowable_speed( float acceleration, float target_velocity, float distance);
+        float max_allowable_speed_jerk(float target_velocity, float distance) const;
         void prepare(float acceleration_in_steps, float deceleration_in_steps);
         void calculate_s_curve(float entry_speed, float exit_speed);
         void prepare_s_curve(float accel_jerk_steps_s3, float decel_jerk_steps_s3);
