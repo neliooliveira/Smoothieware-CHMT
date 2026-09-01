@@ -15,6 +15,7 @@ public:
 
     static FlyByVision *getInstance() { return instance; }
     static void trigger_from_isr(const FlyByTrigger& trigger);
+    static void service_pulses_from_isr();
 
     bool consume_pending(FlyByTrigger& trigger, float block_mm);
 
