@@ -13,18 +13,20 @@ struct FlyByTrigger {
     };
 
     uint32_t trigger_tick;
+    uint32_t trigger_distance_um;
     uint16_t trigger_id;
     uint8_t nozzle_id;
     uint8_t flags;
 
     FlyByTrigger()
-        : trigger_tick(0), trigger_id(0), nozzle_id(0), flags(0)
+        : trigger_tick(0), trigger_distance_um(0), trigger_id(0), nozzle_id(0), flags(0)
     {
     }
 
     void clear()
     {
         trigger_tick = 0;
+        trigger_distance_um = 0;
         trigger_id = 0;
         nozzle_id = 0;
         flags = 0;
