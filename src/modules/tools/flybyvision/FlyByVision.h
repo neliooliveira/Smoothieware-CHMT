@@ -6,6 +6,7 @@
 #include "FlyByProtocol.h"
 
 class Gcode;
+class Block;
 
 class FlyByVision : public Module {
 public:
@@ -19,11 +20,7 @@ public:
     static void service_pulses_from_isr();
 
     bool consume_pending(FlyByTrigger& trigger, float block_mm);
-    static void finalize_trigger_tick(FlyByTrigger& trigger, float block_mm,
-                                      float entry_speed, float exit_speed,
-                                      float maximum_rate_steps_s, uint32_t steps_event_count,
-                                      uint32_t accelerate_until, uint32_t decelerate_after,
-                                      uint32_t total_move_ticks, float tick_frequency);
+    static void finalize_trigger_tick(FlyByTrigger& trigger, const Block& block, float tick_frequency);
 
 private:
     static FlyByVision *instance;
