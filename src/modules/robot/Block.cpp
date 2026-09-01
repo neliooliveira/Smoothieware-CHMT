@@ -53,8 +53,6 @@ static SCurveRamp make_scurve_ramp(double v0, double v1, double amax, double jer
     }
 
     r.duration = 2.0 * r.tj + r.ta;
-    // A zero-acceleration-ended S ramp is time symmetric, so its total
-    // distance is average velocity times duration.
     r.distance = 0.5 * (v0 + v1) * r.duration;
     return r;
 }
@@ -231,9 +229,7 @@ void Block::calculate_s_curve(float entryspeed, float exitspeed)
     SCurveRamp low_acc = make_scurve_ramp(v0, peak, amax, jerk);
     SCurveRamp low_dec = make_scurve_ramp(vf, peak, amax, jerk);
     if(low_acc.distance + low_dec.distance > distance_steps + 1.0e-6) {
-        // The look-ahead is still acceleration based. If its entry/exit speeds
-        // cannot be connected under the requested jerk limit, preserve the
-        // proven trapezoidal profile rather than generating an impossible move.
+        // Safety fallback for any inconsistent state that escapes look-ahead.
         float saved = s_curve_jerk;
         s_curve_jerk = 0.0F;
         calculate_trapezoid(entryspeed, exitspeed);
@@ -294,11 +290,39 @@ float Block::max_allowable_speed(float acceleration, float target_velocity, floa
     return sqrtf(target_velocity * target_velocity - 2.0F * acceleration * distance);
 }
 
+float Block::max_allowable_speed_jerk(float target_velocity, float distance) const
+{
+    if(s_curve_jerk <= 0.0F || acceleration <= 0.0F || distance <= 0.0F) {
+        return target_velocity;
+    }
+
+    const double v0 = std::max(0.0, (double)target_velocity);
+    const double vmax = std::max(v0, (double)nominal_speed);
+    const double amax = (double)acceleration;
+    const double jerk = (double)s_curve_jerk;
+    const double available = (double)distance;
+
+    if(make_scurve_ramp(v0, vmax, amax, jerk).distance <= available) {
+        return (float)vmax;
+    }
+
+    double lo = v0;
+    double hi = vmax;
+    for(int i = 0; i < 40; ++i) {
+        const double mid = 0.5 * (lo + hi);
+        if(make_scurve_ramp(v0, mid, amax, jerk).distance <= available) lo = mid;
+        else hi = mid;
+    }
+    return (float)lo;
+}
+
 float Block::reverse_pass(float exit_speed)
 {
     if (this->entry_speed != this->max_entry_speed) {
         if ((!this->nominal_length_flag) && (this->max_entry_speed > exit_speed)) {
-            float max_entry_speed = max_allowable_speed(-this->acceleration, exit_speed, this->millimeters);
+            float max_entry_speed = (s_curve_jerk > 0.0F)
+                ? max_allowable_speed_jerk(exit_speed, this->millimeters)
+                : max_allowable_speed(-this->acceleration, exit_speed, this->millimeters);
             this->entry_speed = min(max_entry_speed, this->max_entry_speed);
             return this->entry_speed;
         } else {
@@ -324,7 +348,10 @@ float Block::max_exit_speed()
 {
     if(is_ticking) return this->exit_speed;
     if (nominal_length_flag) return nominal_speed;
-    float max = max_allowable_speed(-this->acceleration, this->entry_speed, this->millimeters);
+
+    float max = (s_curve_jerk > 0.0F)
+        ? max_allowable_speed_jerk(this->entry_speed, this->millimeters)
+        : max_allowable_speed(-this->acceleration, this->entry_speed, this->millimeters);
     return min(max, nominal_speed);
 }
 
