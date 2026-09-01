@@ -79,7 +79,7 @@ void FlyByVision::arm(Gcode *gcode)
     pending.flags = FlyByTrigger::ENABLED;
     if(!gcode->has_letter('C') || gcode->get_int('C') != 0) pending.flags |= FlyByTrigger::CAMERA_TRIGGER;
     if(!gcode->has_letter('L') || gcode->get_int('L') != 0) pending.flags |= FlyByTrigger::LED_STROBE;
-    pending_distance_mm = gcode->has_letter('D') ? gcode->get_value('D') : 0.0F;
+    pending_distance_mm = gcode->has_letter('D') ? std::max(0.0F, gcode->get_value('D')) : 0.0F;
     pending_fraction = gcode->has_letter('P') ? gcode->get_value('P') : -1.0F;
     if(pending_fraction > 1.0F) pending_fraction *= 0.01F;
     if(pending_fraction >= 0.0F) pending_fraction = std::max(0.0F, std::min(1.0F, pending_fraction));
@@ -103,15 +103,29 @@ void FlyByVision::cancel()
 
 void FlyByVision::status(Gcode *gcode)
 {
-    gcode->stream->printf("flyby enabled=%d mode=%u pending=%d I%u N%u\n", enabled ? 1 : 0,
-        (unsigned)mode, pending.enabled() ? 1 : 0, pending.trigger_id, pending.nozzle_id);
+    gcode->stream->printf("flyby enabled=%d mode=%u pending=%d I%u N%u D%.3f\n", enabled ? 1 : 0,
+        (unsigned)mode, pending.enabled() ? 1 : 0, pending.trigger_id, pending.nozzle_id, pending_distance_mm);
 }
 
 bool FlyByVision::consume_pending(FlyByTrigger& trigger, float block_mm)
 {
     if(!enabled || mode == FlyByProtocol::LIVE || !pending.enabled() || block_mm <= 0.0F) return false;
+
+    float distance_mm = 0.0F;
+    if(pending_fraction >= 0.0F) {
+        // Percentage is intentionally relative to the next generated block.
+        distance_mm = pending_fraction * block_mm;
+    } else {
+        // Absolute distance is relative to the complete forthcoming path and
+        // survives internal segmentation until the target lies in this block.
+        if(pending_distance_mm > block_mm) {
+            pending_distance_mm -= block_mm;
+            return false;
+        }
+        distance_mm = pending_distance_mm;
+    }
+
     trigger = pending;
-    float distance_mm = pending_fraction >= 0.0F ? pending_fraction * block_mm : pending_distance_mm;
     distance_mm = std::max(0.0F, std::min(block_mm, distance_mm));
     trigger.trigger_distance_um = (uint32_t)(distance_mm * 1000.0F + 0.5F);
     trigger.trigger_tick = 0;
