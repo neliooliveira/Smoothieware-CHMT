@@ -53,9 +53,11 @@ StepTicker::StepTicker()
 
     NVIC_SetVector(PendSV_IRQn, (uint32_t)PendSV_Handler);
 
-    // Default start values
-    this->set_frequency(100000);
-    this->set_unstep_time(5);
+    // Default start values. 200 kHz gives one step opportunity every 5 us.
+    // Keep STEP high time comfortably below one tick so TIM14 can clear the
+    // pulse before the next possible step event.
+    this->set_frequency(200000);
+    this->set_unstep_time(2);
 
     this->unstep.reset();
     this->num_motors = 0;
@@ -222,10 +224,9 @@ void StepTicker::step_tick (void)
     // do this after so we start at tick 0
     current_tick++; // count number of ticks
 
-    // We may have set a pin on in this tick, now we reset the timer to set it off
-    // Note there could be a race here if we run another tick before the unsteps have happened,
-    // right now it takes about 3-4us but if the unstep were near 10uS or greater it would be an issue
-    // also it takes at least 2us to get here so even when set to 1us pulse width it will still be about 3us
+    // We may have set a pin on in this tick, now we reset the timer to set it off.
+    // At 200 kHz the next step tick arrives 5 us later; the default 2 us
+    // unstep delay leaves margin for TIM14 to clear the STEP outputs first.
     if( unstep.any()) {
         // CEN should have cleared by one-shot mode
         TIM14->CR1 |= TIM_CR1_CEN;
@@ -270,8 +271,8 @@ bool StepTicker::start_next_block()
 
         ok= true; // mark at least one motor is moving
         // set direction bit here
-        // NOTE this would be at least 10us before first step pulse.
-        // TODO does this need to be done sooner, if so how without delaying next tick
+        // NOTE this is now at least 5 us before the first possible step pulse
+        // at the 200 kHz base tick rate.
         motor[m]->set_direction(current_block->direction_bits[m]);
         motor[m]->start_moving(); // also let motor know it is moving now
     }
