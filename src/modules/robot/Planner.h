@@ -17,6 +17,18 @@ public:
     Planner();
     float max_allowable_speed( float acceleration, float target_velocity, float distance);
 
+    // Pick & Place path-control API. G61/G64 are handled by the PnP motion
+    // extension module so OpenPnP can switch modes without rebuilding config.
+    void set_exact_path(bool exact) { path_blending_enable = !exact; }
+    void set_path_tolerance(float tolerance) {
+        path_tolerance = tolerance < 0.0F ? 0.0F : tolerance;
+        path_blending_enable = path_tolerance > 0.0F;
+    }
+    bool is_path_blending_enabled() const { return path_blending_enable; }
+    float get_path_tolerance() const { return path_tolerance; }
+    bool is_s_curve_enabled() const { return s_curve_enable && max_jerk > 0.0F; }
+    float get_max_jerk() const { return max_jerk; }
+
     friend class Robot;
 
 private:
@@ -32,7 +44,7 @@ private:
     bool s_curve_enable;
     float max_jerk;              // physical jerk limit, mm/s^3
     bool path_blending_enable;
-    float path_tolerance;        // maximum geometric corner deviation, mm
+    float path_tolerance;        // maximum cornering deviation used by junction model, mm
 };
 
 #endif
